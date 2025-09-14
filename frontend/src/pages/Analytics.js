@@ -550,244 +550,375 @@ const AnalyticsPage = () => {
               </Grid>
             </Paper>
 
-            {/* Charts Section - Adjusted for Sidebar Layout */}
-            <Grid container spacing={3} sx={{ mb: 4 }}>
-              {/* Daily Trend Line Chart */}
-              <Grid item xs={12} lg={4}>
-                <Paper sx={{ 
-                  p: 3, 
-                  borderRadius: 4, 
-                  height: 520,
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-                  border: '1px solid rgba(0,0,0,0.05)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  minWidth: 0
-                }}>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-                    <TrendingUp sx={{ mr: 1, color: 'success.main', fontSize: 20 }} />
-                    Daily Trends
-                  </Typography>
-                  
-                  {filteredData.chartData.length > 0 ? (
+            {/* ✅ FIXED: Professional Container for Charts - 9/12 (75%) width with flexbox layout */}
+            <Box sx={{
+              width: '75%', // 9/12 of page width
+              maxWidth: '1400px',
+              mx: 'auto', // Center horizontally
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-evenly',
+              gap: 4,
+              mb: 4,
+              px: 3
+            }}>
+              <Grid container spacing={4} sx={{ width: '100%' }}>
+                {/* ✅ Enhanced Daily Trends Chart - Full width in container */}
+                <Grid item xs={12} lg={4}>
+                  <Paper sx={{ 
+                    p: 4,
+                    borderRadius: 4, 
+                    height: 600,
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+                    border: '1px solid rgba(0,0,0,0.05)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minWidth: 0,
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: '0 12px 40px rgba(0,0,0,0.12)'
+                    }
+                  }}>
+                    {/* ✅ Professional Header */}
+                    <Box sx={{ 
+                      mb: 3, 
+                      pb: 2, 
+                      borderBottom: '1px solid', 
+                      borderColor: 'divider',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2
+                    }}>
+                      <Box sx={{
+                        width: 8,
+                        height: 40,
+                        bgcolor: 'success.main',
+                        borderRadius: 1
+                      }} />
+                      <Box>
+                        <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
+                          📈 Daily Financial Trends
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Daily income vs expenses analysis
+                        </Typography>
+                      </Box>
+                    </Box>
+                    
+                    {filteredData.chartData.length > 0 ? (
+                      <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart 
+                            data={filteredData.chartData} 
+                            margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            <XAxis 
+                              dataKey="date" 
+                              tick={{ fontSize: 11, fill: '#666' }}
+                              angle={-45}
+                              textAnchor="end"
+                              height={70}
+                              interval="preserveStartEnd"
+                              axisLine={{ stroke: '#e0e0e0' }}
+                            />
+                            <YAxis 
+                              tickFormatter={(value) => `₹${Math.abs(value / 1000).toFixed(0)}k`}
+                              tick={{ fontSize: 11, fill: '#666' }}
+                              width={60}
+                              axisLine={{ stroke: '#e0e0e0' }}
+                            />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend 
+                              wrapperStyle={{ fontSize: '13px', paddingTop: '15px' }}
+                              iconSize={14}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="income"
+                              stroke="#4CAF50"
+                              strokeWidth={3}
+                              dot={{ fill: '#4CAF50', r: 4 }}
+                              activeDot={{ r: 6, stroke: '#4CAF50', strokeWidth: 2 }}
+                              name="💰 Income"
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="expenses"
+                              stroke="#f44336"
+                              strokeWidth={3}
+                              dot={{ fill: '#f44336', r: 4 }}
+                              activeDot={{ r: 6, stroke: '#f44336', strokeWidth: 2 }}
+                              name="💸 Expenses"
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="net"
+                              stroke="#2196F3"
+                              strokeWidth={2}
+                              strokeDasharray="8 8"
+                              dot={{ fill: '#2196F3', r: 3 }}
+                              activeDot={{ r: 5 }}
+                              name="📊 Net Flow"
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    ) : (
+                      <Box sx={{ 
+                        flexGrow: 1, 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        py: 6
+                      }}>
+                        <Box sx={{
+                          width: 80,
+                          height: 80,
+                          borderRadius: '50%',
+                          bgcolor: 'grey.100',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          mb: 3
+                        }}>
+                          <TrendingUp sx={{ fontSize: 40, color: 'grey.400' }} />
+                        </Box>
+                        <Typography variant="h6" color="text.secondary" gutterBottom>
+                          No Trend Data Available
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" textAlign="center">
+                          Select a date range with transactions to view daily trends
+                        </Typography>
+                      </Box>
+                    )}
+                  </Paper>
+                </Grid>
+
+                {/* ✅ Enhanced Category Breakdown Pie Chart - Full width in container */}
+                <Grid item xs={12} lg={4}>
+                  <Paper sx={{ 
+                    p: 4,
+                    borderRadius: 4, 
+                    height: 600,
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+                    border: '1px solid rgba(0,0,0,0.05)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minWidth: 0,
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: '0 12px 40px rgba(0,0,0,0.12)'
+                    }
+                  }}>
+                    {/* ✅ Professional Header */}
+                    <Box sx={{ 
+                      mb: 3, 
+                      pb: 2, 
+                      borderBottom: '1px solid', 
+                      borderColor: 'divider',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2
+                    }}>
+                      <Box sx={{
+                        width: 8,
+                        height: 40,
+                        bgcolor: 'warning.main',
+                        borderRadius: 1
+                      }} />
+                      <Box>
+                        <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
+                          🎯 Expense Categories
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Spending breakdown analysis
+                        </Typography>
+                      </Box>
+                    </Box>
+                    
+                    {filteredData.categoryData.length > 0 ? (
+                      <Box sx={{ flexGrow: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                            <Pie
+                              data={filteredData.categoryData}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={({ name, percent }) => 
+                                percent > 5 ? `${name.length > 10 ? name.substring(0, 8) + '...' : name}` : ''
+                              }
+                              outerRadius={140}
+                              innerRadius={60}
+                              fill="#8884d8"
+                              dataKey="value"
+                              stroke="#fff"
+                              strokeWidth={3}
+                            >
+                              {filteredData.categoryData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              formatter={(value, name) => [formatCurrency(value), name]}
+                              contentStyle={{ 
+                                backgroundColor: 'white', 
+                                border: '1px solid #e0e0e0', 
+                                borderRadius: '8px',
+                                fontSize: '13px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </Box>
+                    ) : (
+                      <Box sx={{ 
+                        flexGrow: 1, 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        py: 6
+                      }}>
+                        <Box sx={{
+                          width: 80,
+                          height: 80,
+                          borderRadius: '50%',
+                          bgcolor: 'grey.100',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          mb: 3
+                        }}>
+                          <Assessment sx={{ fontSize: 40, color: 'grey.400' }} />
+                        </Box>
+                        <Typography variant="h6" color="text.secondary" gutterBottom>
+                          No Category Data
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" textAlign="center">
+                          No expense data available for the selected period
+                        </Typography>
+                      </Box>
+                    )}
+                  </Paper>
+                </Grid>
+
+                {/* ✅ Enhanced Summary Bar Chart - Full width in container */}
+                <Grid item xs={12} lg={4}>
+                  <Paper sx={{ 
+                    p: 4,
+                    borderRadius: 4, 
+                    height: 600,
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+                    border: '1px solid rgba(0,0,0,0.05)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    minWidth: 0,
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: '0 12px 40px rgba(0,0,0,0.12)'
+                    }
+                  }}>
+                    {/* ✅ Professional Header */}
+                    <Box sx={{ 
+                      mb: 3, 
+                      pb: 2, 
+                      borderBottom: '1px solid', 
+                      borderColor: 'divider',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2
+                    }}>
+                      <Box sx={{
+                        width: 8,
+                        height: 40,
+                        bgcolor: 'info.main',
+                        borderRadius: 1
+                      }} />
+                      <Box>
+                        <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
+                          📊 Financial Summary
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Overall financial overview
+                        </Typography>
+                      </Box>
+                    </Box>
+                    
                     <Box sx={{ flexGrow: 1, minHeight: 0 }}>
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart 
-                          data={filteredData.chartData} 
-                          margin={{ top: 15, right: 20, left: 15, bottom: 50 }}
+                        <BarChart 
+                          data={[
+                            { 
+                              name: 'Income', 
+                              value: filteredData.statistics.totalIncome, 
+                              fill: '#4CAF50',
+                            },
+                            { 
+                              name: 'Expenses', 
+                              value: filteredData.statistics.totalExpenses, 
+                              fill: '#f44336',
+                            },
+                            { 
+                              name: 'Net Savings', 
+                              value: Math.abs(filteredData.statistics.totalSavings), 
+                              fill: filteredData.statistics.totalSavings >= 0 ? '#2196F3' : '#ff9800',
+                            }
+                          ]}
+                          margin={{ top: 30, right: 30, left: 30, bottom: 60 }}
                         >
                           <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                           <XAxis 
-                            dataKey="date" 
-                            tick={{ fontSize: 10 }}
-                            angle={-45}
-                            textAnchor="end"
+                            dataKey="name" 
+                            tick={{ fontSize: 12, fontWeight: 600, fill: '#666' }}
+                            angle={0}
+                            textAnchor="middle"
                             height={60}
-                            interval="preserveStartEnd"
+                            axisLine={{ stroke: '#e0e0e0' }}
                           />
                           <YAxis 
-                            tickFormatter={(value) => `₹${Math.abs(value / 1000).toFixed(0)}k`}
-                            tick={{ fontSize: 10 }}
-                            width={50}
+                            tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}k`}
+                            tick={{ fontSize: 11, fill: '#666' }}
+                            width={60}
+                            axisLine={{ stroke: '#e0e0e0' }}
                           />
-                          <Tooltip content={<CustomTooltip />} />
-                          <Legend 
-                            wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
-                            iconSize={12}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="income"
-                            stroke="#4CAF50"
-                            strokeWidth={2}
-                            dot={{ fill: '#4CAF50', r: 3 }}
-                            activeDot={{ r: 5 }}
-                            name="Income"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="expenses"
-                            stroke="#f44336"
-                            strokeWidth={2}
-                            dot={{ fill: '#f44336', r: 3 }}
-                            activeDot={{ r: 5 }}
-                            name="Expenses"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="net"
-                            stroke="#2196F3"
-                            strokeWidth={2}
-                            strokeDasharray="5 5"
-                            dot={{ fill: '#2196F3', r: 2 }}
-                            activeDot={{ r: 4 }}
-                            name="Net"
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </Box>
-                  ) : (
-                    <Box sx={{ 
-                      flexGrow: 1, 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      py: 4
-                    }}>
-                      <TrendingUp sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-                      <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-                        No trend data
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" textAlign="center">
-                        Select a date range with transactions
-                      </Typography>
-                    </Box>
-                  )}
-                </Paper>
-              </Grid>
-
-              {/* Category Breakdown Pie Chart */}
-              <Grid item xs={12} lg={4}>
-                <Paper sx={{ 
-                  p: 3, 
-                  borderRadius: 4, 
-                  height: 520,
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-                  border: '1px solid rgba(0,0,0,0.05)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  minWidth: 0
-                }}>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-                    <Assessment sx={{ mr: 1, color: 'warning.main', fontSize: 20 }} />
-                    Categories
-                  </Typography>
-                  
-                  {filteredData.categoryData.length > 0 ? (
-                    <Box sx={{ flexGrow: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart margin={{ top: 15, right: 15, bottom: 15, left: 15 }}>
-                          <Pie
-                            data={filteredData.categoryData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) => 
-                              percent > 8 ? `${name.substring(0, 6)}...` : name
-                            }
-                            outerRadius={110}
-                            innerRadius={45}
-                            fill="#8884d8"
-                            dataKey="value"
-                            stroke="#fff"
-                            strokeWidth={2}
-                          >
-                            {filteredData.categoryData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
                           <Tooltip 
                             formatter={(value, name) => [formatCurrency(value), name]}
                             contentStyle={{ 
                               backgroundColor: 'white', 
-                              border: '1px solid #ccc', 
+                              border: '1px solid #e0e0e0', 
                               borderRadius: '8px',
-                              fontSize: '12px'
+                              fontSize: '13px',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                             }}
                           />
-                        </PieChart>
+                          <Bar 
+                            dataKey="value" 
+                            radius={[6, 6, 0, 0]}
+                            stroke="rgba(255,255,255,0.3)"
+                            strokeWidth={1}
+                          >
+                            {[
+                              { name: 'Income', value: filteredData.statistics.totalIncome, fill: '#4CAF50' },
+                              { name: 'Expenses', value: filteredData.statistics.totalExpenses, fill: '#f44336' },
+                              { name: 'Savings', value: Math.abs(filteredData.statistics.totalSavings), fill: filteredData.statistics.totalSavings >= 0 ? '#2196F3' : '#ff9800' }
+                            ].map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.fill} />
+                            ))}
+                          </Bar>
+                        </BarChart>
                       </ResponsiveContainer>
                     </Box>
-                  ) : (
-                    <Box sx={{ 
-                      flexGrow: 1, 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      py: 4
-                    }}>
-                      <Assessment sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-                      <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-                        No categories
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" textAlign="center">
-                        No expense data available
-                      </Typography>
-                    </Box>
-                  )}
-                </Paper>
+                  </Paper>
+                </Grid>
               </Grid>
-
-              {/* Summary Bar Chart */}
-              <Grid item xs={12} lg={4}>
-                <Paper sx={{ 
-                  p: 3, 
-                  borderRadius: 4, 
-                  height: 520,
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-                  border: '1px solid rgba(0,0,0,0.05)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  minWidth: 0
-                }}>
-                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-                    <AnalyticsIcon sx={{ mr: 1, color: 'info.main', fontSize: 20 }} />
-                    Summary
-                  </Typography>
-                  
-                  <Box sx={{ flexGrow: 1, minHeight: 0 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart 
-                        data={[
-                          { name: 'Income', value: filteredData.statistics.totalIncome, fill: '#4CAF50' },
-                          { name: 'Expenses', value: filteredData.statistics.totalExpenses, fill: '#f44336' },
-                          { name: 'Savings', value: Math.abs(filteredData.statistics.totalSavings), fill: filteredData.statistics.totalSavings >= 0 ? '#2196F3' : '#ff9800' }
-                        ]}
-                        margin={{ top: 20, right: 15, left: 15, bottom: 50 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                        <XAxis 
-                          dataKey="name" 
-                          tick={{ fontSize: 10, fontWeight: 500 }}
-                          angle={-20}
-                          textAnchor="end"
-                          height={50}
-                        />
-                        <YAxis 
-                          tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}k`}
-                          tick={{ fontSize: 10 }}
-                          width={45}
-                        />
-                        <Tooltip 
-                          formatter={(value, name) => [formatCurrency(value), name]}
-                          contentStyle={{ 
-                            backgroundColor: 'white', 
-                            border: '1px solid #ccc', 
-                            borderRadius: '8px',
-                            fontSize: '12px'
-                          }}
-                        />
-                        <Bar 
-                          dataKey="value" 
-                          radius={[4, 4, 0, 0]}
-                          fill={(entry) => entry.fill}
-                        >
-                          {[
-                            { name: 'Income', value: filteredData.statistics.totalIncome, fill: '#4CAF50' },
-                            { name: 'Expenses', value: filteredData.statistics.totalExpenses, fill: '#f44336' },
-                            { name: 'Savings', value: Math.abs(filteredData.statistics.totalSavings), fill: filteredData.statistics.totalSavings >= 0 ? '#2196F3' : '#ff9800' }
-                          ].map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.fill} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </Box>
-                </Paper>
-              </Grid>
-            </Grid>
+            </Box>
 
             {/* Category Legend */}
             {filteredData.categoryData.length > 0 && (

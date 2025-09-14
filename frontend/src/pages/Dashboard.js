@@ -80,9 +80,68 @@ const Dashboard = () => {
     avgDailySpending: 0
   });
 
-  // ✅ All other hooks
+  // ✅ NEW: Add refresh trigger for automatic updates
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [lastTransactionCount, setLastTransactionCount] = useState(0);
+
+  // ✅ ENHANCED: Initial fetch and periodic refresh
   useEffect(() => {
-    dispatch(fetchTransactions());
+    const fetchData = async () => {
+      try {
+        await dispatch(fetchTransactions()).unwrap();
+        console.log('✅ Dashboard: Transactions fetched successfully');
+      } catch (error) {
+        console.error('❌ Dashboard: Failed to fetch transactions:', error);
+      }
+    };
+
+    fetchData();
+  }, [dispatch, refreshTrigger]);
+
+  // ✅ NEW: Auto-refresh when transaction count changes (indicates new uploads)
+  useEffect(() => {
+    if (transactions.length > lastTransactionCount && lastTransactionCount > 0) {
+      const newTransactionsCount = transactions.length - lastTransactionCount;
+      setNotification({
+        open: true,
+        message: `🎉 ${newTransactionsCount} new transaction(s) added! Dashboard updated.`,
+        severity: 'success'
+      });
+      console.log(`✅ Dashboard: Detected ${newTransactionsCount} new transactions`);
+    }
+    setLastTransactionCount(transactions.length);
+  }, [transactions.length, lastTransactionCount]);
+
+  // ✅ NEW: Listen for transaction updates via browser events (for inter-component communication)
+  useEffect(() => {
+    const handleTransactionUpdate = (event) => {
+      console.log('📥 Dashboard: Received transaction update event', event.detail);
+      setRefreshTrigger(prev => prev + 1);
+      
+      if (event.detail && event.detail.message) {
+        setNotification({
+          open: true,
+          message: event.detail.message,
+          severity: 'success'
+        });
+      }
+    };
+
+    window.addEventListener('transactionUpdated', handleTransactionUpdate);
+    
+    return () => {
+      window.removeEventListener('transactionUpdated', handleTransactionUpdate);
+    };
+  }, []);
+
+  // ✅ NEW: Automatic refresh every 30 seconds (in case uploads happen in other tabs)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log('🔄 Dashboard: Auto-refreshing transactions...');
+      dispatch(fetchTransactions());
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
   }, [dispatch]);
 
   // ✅ Calculate filtered transactions with safe amount handling
@@ -140,13 +199,23 @@ const Dashboard = () => {
       const categories = new Set(filteredTransactions.map(t => t.category));
       const days = parseInt(timeFilter);
 
-      setStats({
+      const newStats = {
         totalIncome,
         totalExpenses,
         netBalance: totalIncome - totalExpenses,
         transactionCount: filteredTransactions.length,
         categoriesCount: categories.size,
         avgDailySpending: totalExpenses / days
+      };
+
+      setStats(newStats);
+      
+      // ✅ Log stats for debugging
+      console.log('📊 Dashboard stats updated:', {
+        transactions: newStats.transactionCount,
+        income: formatCurrency(newStats.totalIncome),
+        expenses: formatCurrency(newStats.totalExpenses),
+        balance: formatCurrency(newStats.netBalance)
       });
     };
 
@@ -256,9 +325,25 @@ const Dashboard = () => {
     setNotification(prev => ({ ...prev, open: false }));
   }, []);
 
+  // ✅ ENHANCED: Manual refresh with user feedback
   const loadExpenses = useCallback(async () => {
-    dispatch(fetchTransactions());
-  }, [dispatch]);
+    try {
+      console.log('🔄 Dashboard: Manual refresh triggered');
+      await dispatch(fetchTransactions()).unwrap();
+      
+      setNotification({
+        open: true,
+        message: `✅ Refreshed! Found ${transactions.length} transactions`,
+        severity: 'success'
+      });
+    } catch (error) {
+      setNotification({
+        open: true,
+        message: `❌ Refresh failed: ${error.message}`,
+        severity: 'error'
+      });
+    }
+  }, [dispatch, transactions.length]);
 
   // ✅ CONDITIONAL RENDERING AFTER ALL HOOKS
   if (error) {
@@ -267,6 +352,13 @@ const Dashboard = () => {
         <Alert severity="error" sx={{ mb: 2 }}>
           Error loading dashboard: {error}
         </Alert>
+        <Button 
+          variant="contained" 
+          onClick={() => setRefreshTrigger(prev => prev + 1)}
+          startIcon={<RefreshIcon />}
+        >
+          Retry
+        </Button>
       </Box>
     );
   }
@@ -281,6 +373,10 @@ const Dashboard = () => {
           </Typography>
           <Typography variant="body1" color="text.secondary">
             Here's your financial overview for the selected period
+          </Typography>
+          {/* ✅ NEW: Show last update time */}
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+            Last updated: {new Date().toLocaleTimeString()} • {transactions.length} total transactions
           </Typography>
         </Box>
         
@@ -298,6 +394,17 @@ const Dashboard = () => {
               <MenuItem value="365">Last year</MenuItem>
             </Select>
           </FormControl>
+          
+          {/* ✅ NEW: Manual refresh button */}
+          <Button
+            variant="outlined"
+            onClick={loadExpenses}
+            disabled={isLoading}
+            startIcon={isLoading ? <CircularProgress size={16} /> : <RefreshIcon />}
+            sx={{ minWidth: 100 }}
+          >
+            {isLoading ? 'Loading...' : 'Refresh'}
+          </Button>
         </Box>
       </Box>
 
@@ -306,351 +413,377 @@ const Dashboard = () => {
         <LinearProgress sx={{ mb: 3, borderRadius: 1 }} />
       )}
 
-      {/* Statistics Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
-            <Card sx={{ 
-              borderRadius: 3, 
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              color: 'white',
-              height: '100%'
-            }}>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
-                    <AccountBalance />
-                  </Avatar>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    Net Balance
+      {/* ✅ Statistics Cards - Centered with enhanced animations */}
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'center',
+        mb: 4
+      }}>
+        <Grid container spacing={3} sx={{ maxWidth: '1200px' }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <motion.div 
+              whileHover={{ scale: 1.02 }} 
+              transition={{ duration: 0.2 }}
+              key={`balance-${stats.netBalance}`} // ✅ Key for re-animation on change
+              initial={{ scale: 0.95, opacity: 0.7 }}
+              animate={{ scale: 1, opacity: 1 }}
+            >
+              <Card sx={{ 
+                borderRadius: 3, 
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                height: '100%'
+              }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                      <AccountBalance />
+                    </Avatar>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Net Balance
+                    </Typography>
+                  </Box>
+                  <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                    {formatCurrency(stats.netBalance)}
                   </Typography>
-                </Box>
-                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-                  {formatCurrency(stats.netBalance)}
-                </Typography>
-                <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                  {stats.netBalance >= 0 ? '📈 Positive' : '📉 Deficit'}
-                </Typography>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </Grid>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    {stats.netBalance >= 0 ? '📈 Positive' : '📉 Deficit'}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
-            <Card sx={{ 
-              borderRadius: 3,
-              background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-              color: 'white',
-              height: '100%'
-            }}>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
-                    <TrendingUp />
-                  </Avatar>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    Total Income
+          <Grid item xs={12} sm={6} md={3}>
+            <motion.div 
+              whileHover={{ scale: 1.02 }} 
+              transition={{ duration: 0.2 }}
+              key={`income-${stats.totalIncome}`}
+              initial={{ scale: 0.95, opacity: 0.7 }}
+              animate={{ scale: 1, opacity: 1 }}
+            >
+              <Card sx={{ 
+                borderRadius: 3,
+                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                color: 'white',
+                height: '100%'
+              }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                      <TrendingUp />
+                    </Avatar>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Total Income
+                    </Typography>
+                  </Box>
+                  <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                    {formatCurrency(stats.totalIncome)}
                   </Typography>
-                </Box>
-                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-                  {formatCurrency(stats.totalIncome)}
-                </Typography>
-                <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                  Last {timeFilter} days
-                </Typography>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </Grid>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    Last {timeFilter} days
+                  </Typography>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
-            <Card sx={{ 
-              borderRadius: 3,
-              background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-              color: 'white',
-              height: '100%'
-            }}>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
-                    <TrendingDown />
-                  </Avatar>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    Total Expenses
+          <Grid item xs={12} sm={6} md={3}>
+            <motion.div 
+              whileHover={{ scale: 1.02 }} 
+              transition={{ duration: 0.2 }}
+              key={`expenses-${stats.totalExpenses}`}
+              initial={{ scale: 0.95, opacity: 0.7 }}
+              animate={{ scale: 1, opacity: 1 }}
+            >
+              <Card sx={{ 
+                borderRadius: 3,
+                background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                color: 'white',
+                height: '100%'
+              }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                      <TrendingDown />
+                    </Avatar>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Total Expenses
+                    </Typography>
+                  </Box>
+                  <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                    {formatCurrency(stats.totalExpenses)}
                   </Typography>
-                </Box>
-                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-                  {formatCurrency(stats.totalExpenses)}
-                </Typography>
-                <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                  Last {timeFilter} days
-                </Typography>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </Grid>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    Last {timeFilter} days
+                  </Typography>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
-            <Card sx={{ 
-              borderRadius: 3,
-              background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-              color: 'white',
-              height: '100%'
-            }}>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                  <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
-                    <Receipt />
-                  </Avatar>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    Transactions
+          <Grid item xs={12} sm={6} md={3}>
+            <motion.div 
+              whileHover={{ scale: 1.02 }} 
+              transition={{ duration: 0.2 }}
+              key={`count-${stats.transactionCount}`}
+              initial={{ scale: 0.95, opacity: 0.7 }}
+              animate={{ scale: 1, opacity: 1 }}
+            >
+              <Card sx={{ 
+                borderRadius: 3,
+                background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+                color: 'white',
+                height: '100%'
+              }}>
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                      <Receipt />
+                    </Avatar>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Transactions
+                    </Typography>
+                  </Box>
+                  <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                    {stats.transactionCount}
                   </Typography>
-                </Box>
-                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
-                  {stats.transactionCount}
-                </Typography>
-                <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                  {stats.categoriesCount} categories
-                </Typography>
-              </CardContent>
-            </Card>
-          </motion.div>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    {stats.categoriesCount} categories
+                  </Typography>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </Grid>
         </Grid>
-      </Grid>
+      </Box>
 
       {/* Charts and Recent Transactions */}
-      {/* ✅ Professional Container - 9/12 (75%) width with flexbox */}
-<Box sx={{
-  width: '75%', // 9/12 of page width
-  maxWidth: '1400px',
-  mx: 'auto', // Center horizontally
-  display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'space-evenly',
-  gap: 4,
-  mb: 4,
-  px: 3
-}}>
-  <Grid container spacing={4} sx={{ width: '100%' }}>
-    {/* ✅ Enhanced Weekly Trend Chart - Full width in container */}
-    <Grid item xs={12} lg={8}>
-      <Paper sx={{ 
-        p: 4, 
-        borderRadius: 4, 
-        height: 500,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
-        border: '1px solid rgba(0,0,0,0.05)',
-        transition: 'all 0.3s ease',
-        '&:hover': {
-          transform: 'translateY(-2px)',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.12)'
-        }
+      <Box sx={{
+        width: '75%',
+        maxWidth: '1400px',
+        mx: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-evenly',
+        gap: 4,
+        mb: 4,
+        px: 3
       }}>
-        {/* ✅ Professional Header */}
-        <Box sx={{ 
-          mb: 3, 
-          pb: 2, 
-          borderBottom: '1px solid', 
-          borderColor: 'divider',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2
-        }}>
-          <Box sx={{
-            width: 8,
-            height: 40,
-            bgcolor: 'primary.main',
-            borderRadius: 1
-          }} />
-          <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
-              📈 Weekly Financial Trends
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              7-day income vs expenses analysis
-            </Typography>
-          </Box>
-        </Box>
-        
-        <Box sx={{ height: 'calc(100% - 100px)' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart 
-              data={chartData}
-              margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis 
-                dataKey="date" 
-                tick={{ fontSize: 12, fill: '#666' }}
-                axisLine={{ stroke: '#e0e0e0' }}
-              />
-              <YAxis 
-                tickFormatter={(value) => formatCurrency(value)}
-                tick={{ fontSize: 12, fill: '#666' }}
-                axisLine={{ stroke: '#e0e0e0' }}
-              />
-              <RechartsTooltip 
-                formatter={(value, name) => [formatCurrency(value), name]}
-                labelStyle={{ color: '#333', fontWeight: 600 }}
-                contentStyle={{
-                  backgroundColor: 'white',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                }}
-              />
-              <Legend 
-                wrapperStyle={{ paddingTop: '20px' }}
-                iconType="line"
-              />
-              <Line 
-                type="monotone" 
-                dataKey="income" 
-                stroke="#4CAF50" 
-                strokeWidth={4}
-                dot={{ fill: '#4CAF50', strokeWidth: 2, r: 5 }}
-                activeDot={{ r: 7, stroke: '#4CAF50', strokeWidth: 2 }}
-                name="💰 Income"
-              />
-              <Line 
-                type="monotone" 
-                dataKey="expenses" 
-                stroke="#f44336" 
-                strokeWidth={4}
-                dot={{ fill: '#f44336', strokeWidth: 2, r: 5 }}
-                activeDot={{ r: 7, stroke: '#f44336', strokeWidth: 2 }}
-                name="💸 Expenses"
-              />
-              <Line 
-                type="monotone" 
-                dataKey="net" 
-                stroke="#2196F3" 
-                strokeWidth={3}
-                strokeDasharray="8 8"
-                dot={{ fill: '#2196F3', strokeWidth: 2, r: 4 }}
-                activeDot={{ r: 6, stroke: '#2196F3', strokeWidth: 2 }}
-                name="📊 Net Flow"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </Box>
-      </Paper>
-    </Grid>
-
-    {/* ✅ Enhanced Category Breakdown - Full width in container */}
-    <Grid item xs={12} lg={4}>
-      <Paper sx={{ 
-        p: 4, 
-        borderRadius: 4, 
-        height: 500,
-        boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
-        border: '1px solid rgba(0,0,0,0.05)',
-        transition: 'all 0.3s ease',
-        '&:hover': {
-          transform: 'translateY(-2px)',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.12)'
-        }
-      }}>
-        {/* ✅ Professional Header */}
-        <Box sx={{ 
-          mb: 3, 
-          pb: 2, 
-          borderBottom: '1px solid', 
-          borderColor: 'divider',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2
-        }}>
-          <Box sx={{
-            width: 8,
-            height: 40,
-            bgcolor: 'warning.main',
-            borderRadius: 1
-          }} />
-          <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
-              🎯 Expense Categories
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Spending breakdown analysis
-            </Typography>
-          </Box>
-        </Box>
-
-        {categoryData.length > 0 ? (
-          <Box sx={{ height: 'calc(100% - 100px)', display: 'flex', alignItems: 'center' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={categoryData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => 
-                    percent > 5 ? `${name.length > 8 ? name.substring(0, 8) + '...' : name}` : ''
-                  }
-                  outerRadius={120}
-                  innerRadius={50}
-                  fill="#8884d8"
-                  dataKey="value"
-                  stroke="#fff"
-                  strokeWidth={3}
-                >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <RechartsTooltip 
-                  formatter={(value, name) => [formatCurrency(value), name]}
-                  contentStyle={{
-                    backgroundColor: 'white',
-                    border: '1px solid #e0e0e0',
-                    borderRadius: '8px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </Box>
-        ) : (
-          <Box sx={{ 
-            height: 'calc(100% - 100px)',
-            display: 'flex', 
-            flexDirection: 'column',
-            alignItems: 'center', 
-            justifyContent: 'center',
-            py: 6
-          }}>
-            <Box sx={{
-              width: 80,
-              height: 80,
-              borderRadius: '50%',
-              bgcolor: 'grey.100',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              mb: 3
+        <Grid container spacing={4} sx={{ width: '100%' }}>
+          {/* ✅ Enhanced Weekly Trend Chart */}
+          <Grid item xs={12} lg={8}>
+            <Paper sx={{ 
+              p: 4, 
+              borderRadius: 4, 
+              height: 500,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+              border: '1px solid rgba(0,0,0,0.05)',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 12px 40px rgba(0,0,0,0.12)'
+              }
             }}>
-              <Typography variant="h3" sx={{ color: 'grey.400' }}>
-                📊
-              </Typography>
-            </Box>
-            <Typography variant="h6" color="text.secondary" gutterBottom>
-              No Data Available
-            </Typography>
-            <Typography variant="body2" color="text.secondary" textAlign="center">
-              No expense data available for the selected period
-            </Typography>
-          </Box>
-        )}
-      </Paper>
-    </Grid>
-  </Grid>
-</Box>
+              <Box sx={{ 
+                mb: 3, 
+                pb: 2, 
+                borderBottom: '1px solid', 
+                borderColor: 'divider',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2
+              }}>
+                <Box sx={{
+                  width: 8,
+                  height: 40,
+                  bgcolor: 'primary.main',
+                  borderRadius: 1
+                }} />
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
+                    📈 Weekly Financial Trends
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    7-day income vs expenses analysis
+                  </Typography>
+                </Box>
+              </Box>
+              
+              <Box sx={{ height: 'calc(100% - 100px)' }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart 
+                    data={chartData}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis 
+                      dataKey="date" 
+                      tick={{ fontSize: 12, fill: '#666' }}
+                      axisLine={{ stroke: '#e0e0e0' }}
+                    />
+                    <YAxis 
+                      tickFormatter={(value) => formatCurrency(value)}
+                      tick={{ fontSize: 12, fill: '#666' }}
+                      axisLine={{ stroke: '#e0e0e0' }}
+                    />
+                    <RechartsTooltip 
+                      formatter={(value, name) => [formatCurrency(value), name]}
+                      labelStyle={{ color: '#333', fontWeight: 600 }}
+                      contentStyle={{
+                        backgroundColor: 'white',
+                        border: '1px solid #e0e0e0',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                      }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ paddingTop: '20px' }}
+                      iconType="line"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="income" 
+                      stroke="#4CAF50" 
+                      strokeWidth={4}
+                      dot={{ fill: '#4CAF50', strokeWidth: 2, r: 5 }}
+                      activeDot={{ r: 7, stroke: '#4CAF50', strokeWidth: 2 }}
+                      name="💰 Income"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="expenses" 
+                      stroke="#f44336" 
+                      strokeWidth={4}
+                      dot={{ fill: '#f44336', strokeWidth: 2, r: 5 }}
+                      activeDot={{ r: 7, stroke: '#f44336', strokeWidth: 2 }}
+                      name="💸 Expenses"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="net" 
+                      stroke="#2196F3" 
+                      strokeWidth={3}
+                      strokeDasharray="8 8"
+                      dot={{ fill: '#2196F3', strokeWidth: 2, r: 4 }}
+                      activeDot={{ r: 6, stroke: '#2196F3', strokeWidth: 2 }}
+                      name="📊 Net Flow"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Box>
+            </Paper>
+          </Grid>
 
+          {/* ✅ Enhanced Category Breakdown */}
+          <Grid item xs={12} lg={4}>
+            <Paper sx={{ 
+              p: 4, 
+              borderRadius: 4, 
+              height: 500,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+              border: '1px solid rgba(0,0,0,0.05)',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 12px 40px rgba(0,0,0,0.12)'
+              }
+            }}>
+              <Box sx={{ 
+                mb: 3, 
+                pb: 2, 
+                borderBottom: '1px solid', 
+                borderColor: 'divider',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2
+              }}>
+                <Box sx={{
+                  width: 8,
+                  height: 40,
+                  bgcolor: 'warning.main',
+                  borderRadius: 1
+                }} />
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
+                    🎯 Expense Categories
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Spending breakdown analysis
+                  </Typography>
+                </Box>
+              </Box>
+
+              {categoryData.length > 0 ? (
+                <Box sx={{ height: 'calc(100% - 100px)', display: 'flex', alignItems: 'center' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={categoryData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, percent }) => 
+                          percent > 5 ? `${name.length > 8 ? name.substring(0, 8) + '...' : name}` : ''
+                        }
+                        outerRadius={120}
+                        innerRadius={50}
+                        fill="#8884d8"
+                        dataKey="value"
+                        stroke="#fff"
+                        strokeWidth={3}
+                      >
+                        {categoryData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip 
+                        formatter={(value, name) => [formatCurrency(value), name]}
+                        contentStyle={{
+                          backgroundColor: 'white',
+                          border: '1px solid #e0e0e0',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </Box>
+              ) : (
+                <Box sx={{ 
+                  height: 'calc(100% - 100px)',
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  py: 6
+                }}>
+                  <Box sx={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: '50%',
+                    bgcolor: 'grey.100',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    mb: 3
+                  }}>
+                    <Typography variant="h3" sx={{ color: 'grey.400' }}>
+                      📊
+                    </Typography>
+                  </Box>
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
+                    No Data Available
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" textAlign="center">
+                    No expense data available for the selected period
+                  </Typography>
+                </Box>
+              )}
+            </Paper>
+          </Grid>
+        </Grid>
+      </Box>
 
       {/* Recent Transactions */}
       <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
@@ -711,7 +844,6 @@ const Dashboard = () => {
                             color: transaction.type === 'income' ? 'success.main' : 'error.main'
                           }}
                         >
-                          {/* ✅ FIXED: Safe amount formatting */}
                           {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
                         </Typography>
                       </Box>

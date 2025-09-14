@@ -3,969 +3,597 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
-const vision = require('@google-cloud/vision');
 const Tesseract = require('tesseract.js');
 const pdfParse = require('pdf-parse');
 const Transaction = require('../models/Transaction');
 const axios = require('axios');
+const fs = require('fs').promises;
+const path = require('path');
 
 // Apply authentication middleware
 router.use(auth);
 
-// Initialize Vision API client (optional, with error handling)
-let visionClient = null;
-if (process.env.GOOGLE_APPLICATION_CREDENTIALS && process.env.GOOGLE_PROJECT_ID) {
+// ✅ Cloudinary configuration (optional)
+let isCloudinaryConfigured = false;
+if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
   try {
-    visionClient = new vision.ImageAnnotatorClient({
-      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-      projectId: process.env.GOOGLE_PROJECT_ID
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+      secure: true,
     });
-    console.log('✅ Google Vision API client initialized');
+    isCloudinaryConfigured = true;
+    console.log('✅ Cloudinary configured');
   } catch (error) {
-    console.warn('⚠️ Google Vision API initialization failed:', error.message);
+    console.warn('⚠️ Cloudinary configuration failed:', error.message);
   }
 } else {
-  console.warn('⚠️ Google Vision API credentials not configured');
+  console.warn('⚠️ Cloudinary environment variables not set');
 }
 
-// Configure multer properly
-const storage = multer.memoryStorage();
+// ✅ Enhanced multer configuration
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    const timestamp = Date.now();
+    const sanitizedFilename = file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_');
+    cb(null, `${file.fieldname}_${timestamp}_${sanitizedFilename}`);
+  },
+});
 
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
-    fieldSize: 10 * 1024 * 1024,
+    fileSize: 50 * 1024 * 1024, // 50MB
+    files: 1,
   },
   fileFilter: (req, file, cb) => {
-    console.log('📁 Multer processing file:', {
-      fieldname: file.fieldname,
-      originalname: file.originalname,
-      mimetype: file.mimetype
-    });
-    
     const allowedMimes = [
-      'image/jpeg',
-      'image/jpg',
-      'image/png', 
-      'image/gif',
-      'application/pdf'
+      'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'
     ];
     
     if (allowedMimes.includes(file.mimetype)) {
-      console.log('✅ File type accepted:', file.mimetype);
       cb(null, true);
     } else {
-      console.log('❌ File type rejected:', file.mimetype);
-      cb(new Error(`Invalid file type: ${file.mimetype}. Only images (JPEG, PNG, GIF) and PDF files are allowed.`));
+      cb(new Error(`Invalid file type: ${file.mimetype}`));
     }
   }
 });
 
-// Helper function: Enhanced OCR with multiple passes
-async function extractTextFromImageMultiPass(buffer) {
-  const psmModes = [3, 6, 8, 4, 7];
-  let bestResult = { text: '', confidence: 0 };
-  
-  console.log('🔍 Running enhanced multi-pass Tesseract OCR...');
-  
-  for (let i = 0; i < psmModes.length; i++) {
-    try {
-      const psm = psmModes[i];
-      console.log(`📝 OCR pass ${i + 1}/${psmModes.length} with PSM ${psm}...`);
-      
-      const { data: { text, confidence } } = await Tesseract.recognize(buffer, 'eng', {
-        logger: m => {
-          if (m.status === 'recognizing text' && Math.floor(m.progress * 100) % 20 === 0) {
-            console.log(`📊 Pass ${i + 1} progress: ${(m.progress * 100).toFixed(1)}%`);
-          }
-        },
-        tessedit_pageseg_mode: psm,
-        tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz$/.,:|()- \n\t',
-        preserve_interword_spaces: '1',
-        user_defined_dpi: '300',
-        tessedit_ocr_engine_mode: 2
-      });
-      
-      const score = confidence * (text.length / 100);
-      const prevScore = bestResult.confidence * (bestResult.text.length / 100);
-      
-      if (score > prevScore && text.trim().length > 10) {
-        bestResult = { text: text.trim(), confidence };
-        console.log(`✅ New best result from pass ${i + 1}: confidence ${confidence}%, ${text.length} chars`);
-      }
-      
-    } catch (error) {
-      console.warn(`⚠️ OCR pass ${i + 1} failed:`, error.message);
-    }
+// ✅ FIXED: Optional Cloudinary upload with proper error handling
+const uploadToCloudinaryOptional = async (filePath, options = {}) => {
+  if (!isCloudinaryConfigured) {
+    console.warn('⚠️ Cloudinary not configured, skipping upload');
+    return { secure_url: null, public_id: null, skipped: true };
   }
+
+  try {
+    console.log('☁️ Attempting Cloudinary upload...');
+    
+    const result = await Promise.race([
+      cloudinary.uploader.upload(filePath, {
+        resource_type: 'auto',
+        folder: 'expense-tracker',
+        unique_filename: true,
+        overwrite: true,
+        ...options
+      }),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Cloudinary timeout after 30 seconds')), 30000)
+      )
+    ]);
+
+    console.log(`✅ Cloudinary upload successful: ${result.secure_url}`);
+    return result;
+  } catch (error) {
+    console.error('❌ Cloudinary upload failed:', error.message);
+    console.log('⚠️ Continuing without cloud storage...');
+    return { secure_url: null, public_id: null, error: error.message };
+  }
+};
+
+// ✅ Cleanup function
+const cleanupFile = async (filePath) => {
+  try {
+    if (filePath) {
+      await fs.unlink(filePath);
+      console.log(`🧹 Cleaned up: ${filePath}`);
+    }
+  } catch (error) {
+    console.warn(`⚠️ Cleanup warning: ${error.message}`);
+  }
+};
+
+// ✅ Enhanced OCR
+async function extractTextFromImage(filePath) {
+  console.log('🔍 Starting OCR extraction...');
   
-  console.log('✅ Enhanced OCR completed. Best confidence:', bestResult.confidence, '% Text length:', bestResult.text.length);
-  return bestResult.text;
+  try {
+    const { data: { text, confidence } } = await Tesseract.recognize(filePath, 'eng', {
+      logger: m => {
+        if (m.status === 'recognizing text' && Math.floor(m.progress * 100) % 25 === 0) {
+          console.log(`📊 OCR Progress: ${Math.floor(m.progress * 100)}%`);
+        }
+      },
+      tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+      tessedit_ocr_engine_mode: Tesseract.OEM.LSTM_ONLY,
+    });
+    
+    console.log(`✅ OCR completed. Confidence: ${confidence.toFixed(2)}%, Text length: ${text.length}`);
+    console.log(`📝 Extracted text:\n${text}`);
+    
+    return text.trim();
+  } catch (error) {
+    console.error('❌ OCR failed:', error.message);
+    throw new Error(`OCR processing failed: ${error.message}`);
+  }
 }
 
-// Helper function: Enhanced PDF text extraction
-async function extractTextFromPdf(buffer) {
-  console.log('📄 Starting enhanced PDF text extraction...');
+// ✅ Enhanced PDF extraction
+async function extractTextFromPdf(filePath) {
+  console.log('📄 Extracting text from PDF...');
   
-  // Try Google Vision API first if available
-  if (visionClient) {
-    try {
-      console.log('🔍 Using Google Vision API for PDF OCR...');
-      
-      const [result] = await visionClient.documentTextDetection({
-        image: { content: buffer }
-      });
-      
-      if (result.fullTextAnnotation && result.fullTextAnnotation.text.trim().length > 20) {
-        const visionText = result.fullTextAnnotation.text.trim();
-        console.log('✅ Vision API extracted text:', visionText.length, 'characters');
-        console.log('📝 Vision API preview:', visionText.substring(0, 200));
-        return visionText;
-      }
-    } catch (visionError) {
-      console.warn('⚠️ Google Vision API failed:', visionError.message);
-    }
-  }
-  
-  // Fallback to pdf-parse
   try {
-    console.log('📄 Using pdf-parse for text extraction...');
+    const buffer = await fs.readFile(filePath);
     const pdfData = await pdfParse(buffer, {
       max: 0,
       version: 'v1.10.100'
     });
     
-    if (pdfData.text && pdfData.text.trim().length > 0) {
-      console.log('✅ pdf-parse extracted text:', pdfData.text.length, 'characters');
-      console.log('📄 Number of pages:', pdfData.numpages);
-      console.log('📝 pdf-parse preview:', pdfData.text.substring(0, 200));
-      return pdfData.text.trim();
-    }
+    const text = pdfData.text.trim();
+    console.log(`✅ PDF extraction successful: ${text.length} characters from ${pdfData.numpages} pages`);
+    console.log(`📝 Extracted text:\n${text}`);
     
-    throw new Error('No text found in PDF');
-  } catch (parseError) {
-    console.error('❌ pdf-parse failed:', parseError.message);
-    throw new Error(`PDF text extraction failed: ${parseError.message}`);
+    return text;
+  } catch (error) {
+    console.error('❌ PDF extraction failed:', error.message);
+    throw new Error(`PDF text extraction failed: ${error.message}`);
   }
 }
 
-// Helper function: Enhanced Cloudinary upload with proper URL handling
-function uploadBufferToCloudinary(buffer, filename, fileType = 'auto') {
-  return new Promise((resolve, reject) => {
-    try {
-      console.log('☁️ Starting enhanced Cloudinary upload...');
-      
-      // Generate a clean filename
-      const timestamp = Date.now();
-      const cleanFilename = filename ? filename.replace(/[^a-zA-Z0-9.-]/g, '_') : 'upload';
-      const publicId = `expense_${timestamp}_${cleanFilename}`;
-      
-      const uploadOptions = {
-        resource_type: fileType === 'pdf' ? 'raw' : 'image',
-        folder: 'expense-tracker',
-        public_id: publicId,
-        use_filename: false,
-        unique_filename: false,
-        overwrite: false,
-        // Optimization for images
-        ...(fileType !== 'pdf' && {
-          format: 'jpg',
-          quality: 'auto:good',
-          fetch_format: 'auto'
-        })
-      };
-      
-      console.log('📤 Upload options:', uploadOptions);
-      
-      const uploadStream = cloudinary.uploader.upload_stream(
-        uploadOptions,
-        (error, result) => {
-          if (error) {
-            console.error('❌ Cloudinary upload error:', error);
-            reject(new Error(`Cloudinary upload failed: ${error.message}`));
-          } else {
-            console.log('✅ Cloudinary upload successful:');
-            console.log('   📎 URL:', result.secure_url);
-            console.log('   🆔 Public ID:', result.public_id);
-            console.log('   📏 Size:', result.bytes, 'bytes');
-            console.log('   📋 Format:', result.format);
-            
-            // Ensure we return a proper Cloudinary URL
-            const finalUrl = result.secure_url.startsWith('https://res.cloudinary.com/') 
-              ? result.secure_url 
-              : `https://res.cloudinary.com/${process.env.CLOUDINARY_CLOUD_NAME}/${result.resource_type}/upload/${result.public_id}.${result.format}`;
-            
-            resolve({
-              url: finalUrl,
-              publicId: result.public_id,
-              size: result.bytes,
-              format: result.format,
-              resourceType: result.resource_type
-            });
-          }
-        }
-      );
-
-      uploadStream.end(buffer);
-      
-    } catch (error) {
-      console.error('❌ Cloudinary setup error:', error);
-      reject(new Error(`Cloudinary initialization failed: ${error.message}`));
-    }
-  });
-}
-
-// Helper function: Enhanced Gemini API
-async function callEnhancedGeminiAPI(extractedText, filename = '', retryCount = 0) {
-  const maxRetries = 3;
-  
+// ✅ FIXED: Enhanced Gemini API with 2025 date correction
+async function enhancedGeminiParsing(extractedText, filename = '') {
   if (!process.env.GEMINI_API_KEY) {
-    console.warn('⚠️ GEMINI_API_KEY not configured, skipping AI parsing');
-    throw new Error('Gemini API key not configured');
+    console.warn('⚠️ GEMINI_API_KEY not configured, using fallback parsing');
+    return null;
   }
-  
+
   try {
-    console.log('🤖 Calling Enhanced Gemini AI for expense parsing...');
-    console.log('📝 Input text length:', extractedText.length);
-    console.log('📄 Processing file:', filename);
+    console.log('🤖 Calling Enhanced Gemini AI...');
     
-    const prompt = `
-You are an expert financial data parser. Parse this text EXACTLY as written and extract financial transactions.
+    const prompt = `Parse this financial data and extract ALL transactions. Return ONLY a JSON array.
 
-ORIGINAL TEXT:
-"""
+CRITICAL: Convert all dates to 2025 format. If you see dates like "25-09-14" or "25-09-13", convert them to 2025 dates.
+
+DATA:
 ${extractedText}
-"""
 
-CRITICAL RULES:
-1. Extract ONLY the data that is clearly visible in the text
-2. Preserve EXACT dates, amounts, and descriptions as written
-3. If a table structure is present, parse each row as a separate transaction
-4. Do not invent or assume data that isn't clearly present
-5. For dates: keep the original format but ensure it's valid
-6. For amounts: extract exact numbers as written
-7. For categories: use exact category names if present, otherwise categorize logically
+For each transaction found, extract:
+- date: Convert to 2025 format (YYYY-MM-DD) - Example: 25-09-14 becomes 2025-09-25
+- amount: number only (no currency symbols)
+- type: "income" or "expense" 
+- description: meaningful description from the text
+- category: choose from Food & Dining, Healthcare, Salary, Transportation, Shopping, Entertainment, Bills & Utilities, Housing, Education, Cash Withdrawal, Investment, Refund, Other Income, Other
 
-EXPECTED OUTPUT FORMAT (JSON Array):
+EXAMPLE OUTPUT:
 [
-  {
-    "date": "2025-09-14",
-    "amount": 500.00,
-    "type": "expense",
-    "category": "Food & Dining",
-    "description": "exact description from text",
-    "needsManualReview": false
-  }
+  {"date": "2025-09-25", "amount": 500, "type": "expense", "description": "Food Home", "category": "Food & Dining"},
+  {"date": "2025-09-24", "amount": 1000, "type": "income", "description": "Project Work", "category": "Salary"},
+  {"date": "2025-09-24", "amount": 5000, "type": "expense", "description": "Medical Home Operation", "category": "Healthcare"}
 ]
 
-CATEGORY MAPPING:
-- Food items, meals, restaurants → "Food & Dining"
-- Medical, healthcare, medicine → "Healthcare" 
-- Transport, fuel, taxi → "Transportation"
-- Salary, income, project → "Income"
-- Shopping, retail → "Shopping"
-- Bills, utilities → "Bills & Utilities"
-- Other cases → "Other Expense"
-
-TYPE RULES:
-- Use "income" for salaries, payments received, refunds
-- Use "expense" for purchases, bills, payments made
-
-Parse the text now and return ONLY a valid JSON array:`;
+Return ONLY the JSON array:`;
 
     const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`,
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent',
       {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { 
           temperature: 0.1,
-          maxOutputTokens: 2000,
-          topP: 0.8
-        },
-        safetySettings: [
-          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-        ]
+          maxOutputTokens: 4000,
+        }
       },
       {
         headers: {
           'x-goog-api-key': process.env.GEMINI_API_KEY,
           'Content-Type': 'application/json'
         },
-        timeout: 45000
+        timeout: 30000
       }
     );
 
     const candidate = response.data.candidates?.[0];
     if (!candidate?.content?.parts?.[0]?.text) {
-      throw new Error('Invalid Gemini response structure');
+      throw new Error('Invalid Gemini response');
     }
 
-    const geminiText = candidate.content.parts[0].text;
-    console.log('🤖 Gemini raw response:', geminiText);
+    const geminiText = candidate.content.parts[0].text.trim();
+    console.log('🔄 Parsing JSON...');
+    console.log('🤖 Gemini response:', geminiText);
 
-    // Enhanced JSON extraction
-    let jsonMatch = geminiText.match(/\[[\s\S]*?\]/);
-    
-    if (!jsonMatch) {
-      jsonMatch = geminiText.match(/``````/);
-      if (jsonMatch) jsonMatch[0] = jsonMatch[1];
-    }
-    
+    const jsonMatch = geminiText.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
-      const jsonString = jsonMatch[0];
-      console.log('📊 Extracted JSON:', jsonString);
+      const transactions = JSON.parse(jsonMatch[0]);
+      console.log(`✅ JSON parsing successful! Found ${transactions.length} transactions`);
       
-      const expenseArray = JSON.parse(jsonString);
-      const validatedArray = Array.isArray(expenseArray) ? expenseArray : [expenseArray];
+      // Log parsed transactions
+      console.log('📋 PARSED TRANSACTIONS:');
+      transactions.forEach((transaction, index) => {
+        console.log(`   ${index + 1}. ${transaction.type} ₹${transaction.amount} - ${transaction.description} (${transaction.date})`);
+      });
       
-      console.log(`✅ Gemini parsed ${validatedArray.length} transactions`);
-      return validatedArray.map(validateAndEnhanceTransaction);
-    } else {
-      throw new Error('No valid JSON found in Gemini response');
+      return Array.isArray(transactions) ? transactions : [transactions];
     }
-
+    
+    throw new Error('No valid JSON in Gemini response');
   } catch (error) {
-    console.error('❌ Enhanced Gemini API Error:', error.response?.data || error.message);
-    
-    if ((error.response?.status === 503 || error.message.includes('overloaded')) && retryCount < maxRetries) {
-      const delay = (retryCount + 1) * 3;
-      console.log(`⏳ Gemini overloaded, retrying in ${delay} seconds... (${retryCount + 1}/${maxRetries})`);
-      await new Promise(resolve => setTimeout(resolve, delay * 1000));
-      return callEnhancedGeminiAPI(extractedText, filename, retryCount + 1);
-    }
-    
-    throw error;
+    console.error('❌ Gemini API Error:', error.message);
+    return null;
   }
 }
 
-// Helper function: Enhanced transaction validation
-function validateAndEnhanceTransaction(transaction) {
-  console.log('🔍 Validating transaction:', transaction);
-  
-  // Clean description
-  let description = String(transaction.description || '').trim();
-  if (!description || description.length === 0) {
-    description = `${transaction.category || 'Other'} transaction`;
-  }
-
-  // Enhanced date parsing
-  let date = new Date();
-  if (transaction.date) {
-    const dateStr = String(transaction.date).trim();
-    
-    // Try parsing the date
-    const parsedDate = new Date(dateStr);
-    if (!isNaN(parsedDate.getTime())) {
-      date = parsedDate;
-      console.log(`📅 Parsed date: ${dateStr} → ${date.toDateString()}`);
-    } else {
-      // Try manual parsing for different formats
-      const dateFormats = [
-        /^(\d{2})-(\d{2})-(\d{2,4})$/, // DD-MM-YY or DD-MM-YYYY
-        /^(\d{4})-(\d{2})-(\d{2})$/, // YYYY-MM-DD
-        /^(\d{2})\/(\d{2})\/(\d{2,4})$/, // DD/MM/YY or MM/DD/YYYY
-      ];
-      
-      for (const format of dateFormats) {
-        const match = dateStr.match(format);
-        if (match) {
-          let day, month, year;
-          
-          if (format.source.includes('(\\d{4})')) {
-            // YYYY-MM-DD format
-            year = parseInt(match[1]);
-            month = parseInt(match[2]) - 1;
-            day = parseInt(match[3]);
-          } else {
-            // DD-MM-YY or DD/MM/YY format
-            day = parseInt(match[1]);
-            month = parseInt(match[2]) - 1;
-            year = parseInt(match[3]);
-            
-            // Handle 2-digit years
-            if (year < 50) {
-              year += 2000;
-            } else if (year < 100) {
-              year += 1900;
-            }
-          }
-          
-          date = new Date(year, month, day);
-          console.log(`📅 Manual parsed date: ${dateStr} → ${date.toDateString()}`);
-          break;
-        }
-      }
-    }
-  }
-
-  // Enhanced amount validation
-  let amount = null;
-  let needsManualReview = false;
-  
-  if (transaction.amount !== undefined && transaction.amount !== null) {
-    const numAmount = parseFloat(String(transaction.amount).replace(/[^\d.-]/g, ''));
-    if (!isNaN(numAmount) && numAmount > 0) {
-      amount = Math.round(numAmount * 100) / 100; // Round to 2 decimal places
-    } else {
-      needsManualReview = true;
-    }
-  } else {
-    needsManualReview = true;
-  }
-
-  // Enhanced category validation
-  const validCategories = [
-    'Food & Dining', 'Transportation', 'Shopping', 'Entertainment', 
-    'Bills & Utilities', 'Healthcare', 'Education', 'Travel', 
-    'Groceries', 'Other Expense', 'Income'
-  ];
-  
-  let category = String(transaction.category || 'Other Expense').trim();
-  
-  // Category mapping
-  const categoryMap = {
-    'Food': 'Food & Dining',
-    'Medical': 'Healthcare',
-    'Transport': 'Transportation',
-    'Project': 'Income',
-    'Work': 'Income',
-    'Salary': 'Income'
-  };
-  
-  if (categoryMap[category]) {
-    category = categoryMap[category];
-  } else if (!validCategories.includes(category)) {
-    category = 'Other Expense';
-  }
-
-  // Type validation
-  let type = String(transaction.type || 'expense').toLowerCase();
-  if (!['income', 'expense'].includes(type)) {
-    type = 'expense';
-  }
-
-  const result = {
-    description,
-    amount,
-    category,
-    type,
-    date,
-    needsManualReview,
-    extractedData: {
-      original: transaction,
-      parsed: { description, amount, category, type, date: date.toISOString() }
-    }
-  };
-  
-  console.log('✅ Validated transaction:', {
-    description: result.description,
-    amount: result.amount,
-    category: result.category,
-    type: result.type,
-    needsReview: result.needsManualReview
-  });
-  
-  return result;
-}
-
-// Helper function: Fallback parsing for when Gemini fails
-function fallbackSmartParsing(extractedText) {
-  console.log('🔧 Starting enhanced fallback parsing...');
+// ✅ Enhanced Structured Parsing as Fallback
+function parseTransactionData(text) {
+  console.log('🔍 Using structured parsing as fallback...');
   
   const transactions = [];
-  const lines = extractedText.split('\n').map(line => line.trim()).filter(line => line.length > 3);
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
   
-  console.log(`📝 Processing ${lines.length} lines for fallback parsing`);
-  
-  // Enhanced patterns for better parsing
-  const tablePattern = /(\d{2}[-\/]\d{2}[-\/]\d{2,4})\s+(\d+(?:\.\d{2})?)\s+(\w+)\s+([\w\s]+)/;
-  const amountPattern = /\b(\d+(?:\.\d{2})?)\b/g;
-  const datePattern = /\b(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})\b/;
-  
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    
-    // Try to match table structure first
-    const tableMatch = line.match(tablePattern);
-    if (tableMatch) {
-      transactions.push({
-        date: tableMatch[1],
-        amount: parseFloat(tableMatch[2]),
-        type: tableMatch[3].toLowerCase().includes('income') ? 'income' : 'expense',
-        category: tableMatch[4].trim() || 'Other Expense',
-        description: `${tableMatch[4].trim()} transaction`,
-        needsManualReview: false
-      });
+  for (const line of lines) {
+    // Skip header lines
+    if (line.includes('S.No') || line.includes('Date') || line.includes('Amount') || 
+        line.includes('Type') || line.includes('Category') || line === '====') {
       continue;
     }
     
-    // Look for amounts in the line
-    const amounts = [...line.matchAll(amountPattern)];
-    const dateMatch = line.match(datePattern);
+    // Parse structured data: "1 25-09-14 500 Expense Food Home NA"
+    const structuredMatch = line.match(/^(\d+)\s+(\d{2}-\d{2}-\d{2,4})\s+(\d+(?:\.\d{2})?)\s+(Income|Expense)\s+(\w+)\s+(.+?)(?:\s+NA)?$/i);
     
-    if (amounts.length > 0) {
-      for (const amountMatch of amounts) {
-        const amount = parseFloat(amountMatch[1]);
-        if (amount >= 1 && amount <= 50000) {
-          const description = line.replace(amountMatch[0], '').trim() || 'Extracted item';
-          transactions.push({
-            date: dateMatch ? dateMatch[1] : new Date().toISOString().split('T')[0],
-            amount: amount,
-            type: 'expense',
-            category: 'Other Expense',
-            description: description.substring(0, 100), // Limit description length
-            needsManualReview: false
-          });
-        }
+    if (structuredMatch) {
+      const [, sno, dateStr, amountStr, type, category, description] = structuredMatch;
+      
+      try {
+        // Parse date and convert to 2025
+        const [day, month, year] = dateStr.split('-');
+        const date = new Date(2025, parseInt(month) - 1, parseInt(day));
+        
+        const amount = parseFloat(amountStr);
+        
+        const transaction = {
+          date: date,
+          amount: amount,
+          type: type.toLowerCase(),
+          description: description.trim() || `${category} transaction`,
+          category: mapCategory(category, type.toLowerCase()),
+          isValid: true
+        };
+        
+        transactions.push(transaction);
+        console.log(`✅ Parsed: ${transaction.type} ₹${transaction.amount} - ${transaction.description} (${transaction.date.toISOString().split('T')[0]})`);
+      } catch (error) {
+        console.warn(`⚠️ Failed to parse line: ${line}`);
       }
     }
   }
   
-  // If no transactions found, create a manual entry placeholder
-  if (transactions.length === 0) {
-    transactions.push({
-      date: new Date().toISOString().split('T')[0],
-      amount: null,
-      type: 'expense',
-      category: 'Other Expense',
-      description: 'Unable to parse - manual entry required',
-      needsManualReview: true
-    });
-  }
-  
-  console.log(`🔧 Fallback parsing found ${transactions.length} transactions`);
-  return transactions.map(validateAndEnhanceTransaction);
+  return transactions;
 }
 
-// Enhanced error handling middleware for multer
-const handleMulterErrors = (error, req, res, next) => {
-  console.error('📤 Multer Error:', error);
+// ✅ Category mapping
+function mapCategory(text, type) {
+  const desc = text.toLowerCase();
   
-  if (error instanceof multer.MulterError) {
-    switch (error.code) {
-      case 'LIMIT_FILE_SIZE':
-        return res.status(400).json({
-          success: false,
-          error: 'File too large. Maximum size is 10MB.'
-        });
-      case 'LIMIT_UNEXPECTED_FILE':
-        return res.status(400).json({
-          success: false,
-          error: 'Unexpected file field. Use "file" as the field name.'
-        });
-      case 'LIMIT_FILE_COUNT':
-        return res.status(400).json({
-          success: false,
-          error: 'Too many files. Upload one file at a time.'
-        });
-      default:
-        return res.status(400).json({
-          success: false,
-          error: `Upload error: ${error.message}`
-        });
-    }
+  if (type === 'income') {
+    if (desc.includes('project') || desc.includes('work') || desc.includes('salary')) return 'Salary';
+    return 'Other Income';
   }
   
-  if (error.message && error.message.includes('Invalid file type')) {
-    return res.status(400).json({
-      success: false,
-      error: error.message
-    });
-  }
+  if (desc.includes('food') || desc.includes('meal')) return 'Food & Dining';
+  if (desc.includes('medical') || desc.includes('operation') || desc.includes('hospital')) return 'Healthcare';
+  if (desc.includes('transport') || desc.includes('taxi') || desc.includes('fuel')) return 'Transportation';
+  if (desc.includes('home') || desc.includes('house')) return 'Housing';
   
-  next(error);
-};
+  return 'Other';
+}
 
-// Receipt upload endpoint
-router.post('/receipt', (req, res, next) => {
-  console.log('📸 Receipt upload request started');
-  console.log('   Content-Type:', req.get('Content-Type'));
-  console.log('   Content-Length:', req.get('Content-Length'));
-  
-  upload.single('file')(req, res, (err) => {
-    if (err) {
-      console.error('❌ Multer error during receipt upload:', err);
-      return handleMulterErrors(err, req, res, next);
-    }
-    
-    handleReceiptUpload(req, res, next);
-  });
-});
+// ✅ FIXED: Receipt Upload Route
+router.post('/receipt', upload.single('file'), async (req, res) => {
+  let filePath = null;
+  let cloudinaryResult = null;
+  const startTime = Date.now();
 
-// Receipt processing function
-const handleReceiptUpload = async (req, res, next) => {
-  const processingStartTime = Date.now();
-  let uploadResult = null;
-  
   try {
-    console.log('📸 Processing receipt upload...');
-    
+    console.log('📸 ============= RECEIPT UPLOAD STARTED =============');
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: 'No file uploaded. Please select an image file.',
-        error: 'FILE_MISSING'
+        error: 'No file uploaded. Please select an image file.',
       });
     }
 
-    console.log('✅ File received:', {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      fieldname: req.file.fieldname
+    filePath = req.file.path;
+    console.log(`📄 Processing: ${req.file.originalname}`);
+
+    if (!req.file.mimetype.startsWith('image/')) {
+      throw new Error('Invalid file type. Please upload an image file.');
+    }
+
+    // Step 1: Extract text
+    console.log('🔍 ============= EXTRACTING TEXT =============');
+    const extractedText = await extractTextFromImage(filePath);
+
+    if (!extractedText || extractedText.length < 10) {
+      throw new Error('Could not extract readable text from image.');
+    }
+
+    // Step 2: Upload to Cloudinary (optional)
+    console.log('☁️ ============= UPLOADING TO CLOUDINARY =============');
+    cloudinaryResult = await uploadToCloudinaryOptional(filePath, {
+      public_id: `receipt_${Date.now()}_${path.parse(req.file.originalname).name}`,
+      folder: 'expense-tracker/receipts'
     });
 
-    // Validate file type
-    if (!req.file.mimetype.startsWith('image/')) {
-      return res.status(400).json({
-        success: false,
-        message: 'Receipt upload expects image files only. Use bank statement upload for PDFs.',
-        error: 'INVALID_FILE_TYPE',
-        received: req.file.mimetype
-      });
+    // Step 3: Parse transactions
+    console.log('🤖 ============= PARSING TRANSACTIONS =============');
+    let transactions = await enhancedGeminiParsing(extractedText, req.file.originalname);
+    let parsingMethod = 'Gemini AI';
+
+    if (!transactions || transactions.length === 0) {
+      console.log('⚠️ Gemini failed, using structured parsing...');
+      transactions = parseTransactionData(extractedText);
+      parsingMethod = 'Structured Parser';
     }
 
-    const fileBuffer = req.file.buffer;
-    const userId = req.user._id || req.user.id;
-    const filename = req.file.originalname;
+    console.log(`🎯 Final transaction count: ${transactions.length}`);
 
-    console.log('👤 User ID:', userId);
-    console.log('📄 Processing image:', filename);
-
-    // Step 1: Upload to Cloudinary
-    console.log('☁️ Uploading image to Cloudinary...');
-    uploadResult = await uploadBufferToCloudinary(fileBuffer, filename, 'image');
-
-    // Step 2: Extract text using enhanced OCR
-    console.log('🔍 Extracting text using enhanced OCR...');
-    const extractedText = await extractTextFromImageMultiPass(fileBuffer);
-
-    if (!extractedText || extractedText.trim().length < 10) {
-      console.log('⚠️ OCR extraction failed or returned minimal text');
-      
-      // Create a transaction that needs manual review
-      const emptyTransaction = new Transaction({
-        user: userId,
-        date: new Date(),
-        amount: null,
-        description: 'OCR processing failed - manual entry required',
-        category: 'Other Expense',
-        type: 'expense',
-        fileUrl: uploadResult.url,
-        needsManualReview: true,
-        extractedText: extractedText || '',
-        ocrMethod: 'Multi-pass Tesseract',
-        aiParsed: false,
-        processingStats: {
-          ocrConfidence: 0,
-          processingTime: Date.now() - processingStartTime,
-          textLength: extractedText?.length || 0
-        }
-      });
-
-      await emptyTransaction.save();
-
-      return res.json({
-        success: true,
-        message: 'Image uploaded but text extraction failed. Please add expense details manually.',
-        expenses: [emptyTransaction],
-        transactions: [emptyTransaction],
-        fileUrl: uploadResult.url,
-        stats: {
-          totalExpenses: 1,
-          hasAmount: 0,
-          needsManualAmount: 1,
-          ocrMethod: 'Multi-pass Tesseract',
-          processingTime: Date.now() - processingStartTime,
-          textLength: extractedText?.length || 0
-        },
-        ocrPreview: extractedText || 'OCR text extraction failed'
-      });
-    }
-
-    console.log('📝 OCR Success! Extracted text:');
-    console.log('   📏 Length:', extractedText.length, 'characters');
-    console.log('   📄 Preview:', extractedText.substring(0, 300));
-
-    // Step 3: Parse expenses using enhanced AI
-    let parsedTransactions = [];
-    let parsingMethod = '';
-    
-    try {
-      console.log('🤖 Trying Enhanced Gemini AI parsing...');
-      parsedTransactions = await callEnhancedGeminiAPI(extractedText, filename);
-      parsingMethod = 'Enhanced Gemini 1.5 Flash AI';
-      
-      if (!parsedTransactions || parsedTransactions.length === 0) {
-        throw new Error('Gemini returned empty result');
-      }
-      
-      console.log(`✅ Gemini successfully parsed ${parsedTransactions.length} transactions`);
-      
-    } catch (geminiError) {
-      console.log('⚠️ Gemini AI failed, using enhanced fallback parsing...');
-      console.log('❌ Gemini error:', geminiError.message);
-      parsedTransactions = fallbackSmartParsing(extractedText);
-      parsingMethod = 'Enhanced Fallback Parsing';
-    }
-
-    // Step 4: Save transactions to database
-    console.log(`💾 Saving ${parsedTransactions.length} transactions to database...`);
+    // Step 4: Save to database
+    console.log('💾 ============= SAVING TO DATABASE =============');
     const savedTransactions = [];
-    
-    for (const transactionData of parsedTransactions) {
-      try {
-        const transaction = new Transaction({
-          user: userId,
-          date: transactionData.date,
-          amount: transactionData.amount,
-          description: transactionData.description,
-          category: transactionData.category,
-          type: transactionData.type,
-          fileUrl: uploadResult.url,
-          needsManualReview: transactionData.needsManualReview,
-          extractedText: extractedText,
-          ocrMethod: 'Multi-pass Tesseract',
-          aiParsed: parsingMethod.includes('Gemini'),
-          processingStats: {
-            ocrConfidence: 85,
-            processingTime: Date.now() - processingStartTime,
-            textLength: extractedText.length
-          }
-        });
+    const userId = req.user._id || req.user.id;
 
-        const savedTransaction = await transaction.save();
-        savedTransactions.push(savedTransaction);
-        
-        const status = savedTransaction.needsManualReview ? '🚨 NEEDS REVIEW' : `✅ ₹${savedTransaction.amount}`;
-        console.log(`💾 Saved: ${savedTransaction.description} - ${status}`);
-        
-      } catch (saveError) {
-        console.error('❌ Error saving transaction:', saveError.message);
+    if (transactions.length > 0) {
+      for (const transactionData of transactions) {
+        try {
+          const transaction = new Transaction({
+            user: userId,
+            date: transactionData.date,
+            amount: transactionData.amount,
+            description: transactionData.description,
+            category: transactionData.category,
+            type: transactionData.type,
+            source: 'receipt_upload',
+            fileUrl: cloudinaryResult?.secure_url || null,
+            extractedText: extractedText,
+            parsingMethod: parsingMethod,
+          });
+
+          const saved = await transaction.save();
+          savedTransactions.push(saved);
+          console.log(`✅ Saved: ${saved.description} - ₹${saved.amount} (${saved.type})`);
+        } catch (saveError) {
+          console.error('❌ Save error:', saveError.message);
+        }
       }
     }
 
-    // Step 5: Generate comprehensive response
-    const stats = {
-      totalExpenses: savedTransactions.length,
-      hasAmount: savedTransactions.filter(t => t.amount && t.amount > 0).length,
-      needsManualAmount: savedTransactions.filter(t => t.needsManualReview).length,
-      ocrMethod: 'Multi-pass Tesseract',
-      parsingMethod: parsingMethod,
-      ocrConfidence: 85,
-      processingTime: Date.now() - processingStartTime,
-      textLength: extractedText.length
+    const processingTime = Date.now() - startTime;
+    
+    // ✅ CRITICAL FIX: Calculate proper statistics
+    const incomeTransactions = savedTransactions.filter(t => t.type === 'income');
+    const expenseTransactions = savedTransactions.filter(t => t.type === 'expense');
+    const totalIncome = incomeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const totalExpenses = expenseTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    console.log(`✅ RECEIPT PROCESSING COMPLETE: ${savedTransactions.length} transactions saved`);
+
+    // ✅ CRITICAL FIX: Send response in the correct format that frontend expects
+    const response = {
+      success: true,
+      message: `Receipt processed successfully! ${savedTransactions.length} transaction(s) created using ${parsingMethod}.`,
+      data: {
+        transactions: savedTransactions, // ✅ Frontend needs this
+        fileUrl: cloudinaryResult?.secure_url || null,
+        extractedText: extractedText,
+        stats: { // ✅ Frontend needs this for display
+          transactionCount: savedTransactions.length,
+          incomeCount: incomeTransactions.length,
+          expenseCount: expenseTransactions.length,
+          totalIncome: totalIncome,
+          totalExpenses: totalExpenses,
+          netAmount: totalIncome - totalExpenses,
+          totalAmount: totalIncome + totalExpenses,
+          processingTime: processingTime,
+          parsingMethod: parsingMethod
+        }
+      }
     };
 
-    console.log(`🎉 Receipt processing completed in ${stats.processingTime}ms`);
-    console.log(`📊 Results: ${stats.totalExpenses} expenses, ${stats.hasAmount} with amounts, ${stats.needsManualAmount} need review`);
-
-    res.json({
-      success: true,
-      message: `Successfully processed receipt and extracted ${savedTransactions.length} expense(s). ${stats.needsManualAmount > 0 ? `${stats.needsManualAmount} expense(s) need manual review.` : ''}`,
-      expenses: savedTransactions,
-      transactions: savedTransactions,
-      fileUrl: uploadResult.url,
-      stats,
-      ocrPreview: extractedText.substring(0, 1000) + (extractedText.length > 1000 ? '...' : ''),
-      rawOcrText: extractedText
-    });
+    console.log('📤 SENDING RESPONSE TO FRONTEND');
+    console.log(`📊 Response summary: ${response.data.stats.transactionCount} transactions, ₹${response.data.stats.totalIncome} income, ₹${response.data.stats.totalExpenses} expenses`);
+    
+    res.status(200).json(response); // ✅ CRITICAL: Actually send the response
 
   } catch (error) {
-    console.error('❌ Receipt processing error:', error);
-
-    // Cleanup on failure
-    if (uploadResult?.publicId) {
-      try {
-        await cloudinary.uploader.destroy(uploadResult.publicId);
-        console.log('🧹 Cleaned up failed upload');
-      } catch (cleanupError) {
-        console.warn('⚠️ Failed to cleanup upload:', cleanupError.message);
-      }
-    }
-
+    console.error('❌ Receipt processing error:', error.message);
+    
+    const processingTime = Date.now() - startTime;
     res.status(500).json({
       success: false,
-      message: error.message || 'Receipt processing failed',
-      error: error.name || 'PROCESSING_ERROR',
-      processingTime: Date.now() - processingStartTime
+      error: error.message || 'Receipt processing failed',
+      processingTime: processingTime,
     });
-  }
-};
-
-// Bank statement upload endpoint
-router.post('/bank-statement', (req, res, next) => {
-  console.log('🏦 Bank statement upload request started');
-  console.log('   Content-Type:', req.get('Content-Type'));
-  console.log('   Content-Length:', req.get('Content-Length'));
-  
-  upload.single('file')(req, res, (err) => {
-    if (err) {
-      console.error('❌ Multer error during bank statement upload:', err);
-      return handleMulterErrors(err, req, res, next);
+  } finally {
+    if (filePath) {
+      await cleanupFile(filePath);
     }
-    
-    handleBankStatementUpload(req, res, next);
-  });
+  }
 });
 
-// Bank statement processing function
-const handleBankStatementUpload = async (req, res, next) => {
-  const processingStartTime = Date.now();
-  let uploadResult = null;
-  
+// ✅ CRITICAL FIX: Bank Statement Upload Route with Proper Response
+router.post('/bank-statement', upload.single('file'), async (req, res) => {
+  let filePath = null;
+  let cloudinaryResult = null;
+  const startTime = Date.now();
+
   try {
-    console.log('🏦 Processing bank statement upload...');
-    
+    console.log('🏦 ============= BANK STATEMENT UPLOAD STARTED =============');
+
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: 'No file uploaded. Please select a PDF file.',
-        error: 'FILE_MISSING'
+        error: 'No file uploaded. Please select a PDF file.',
       });
     }
 
-    console.log('✅ File received:', {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      fieldname: req.file.fieldname
+    filePath = req.file.path;
+    console.log(`📄 Processing: ${req.file.originalname}`);
+
+    if (req.file.mimetype !== 'application/pdf') {
+      throw new Error('Invalid file type. Please upload a PDF file.');
+    }
+
+    // Step 1: Extract text from PDF
+    console.log('📄 ============= EXTRACTING PDF TEXT =============');
+    const extractedText = await extractTextFromPdf(filePath);
+
+    if (!extractedText || extractedText.length < 50) {
+      throw new Error('Could not extract sufficient text from PDF.');
+    }
+
+    // Step 2: Upload to Cloudinary (optional)
+    console.log('☁️ ============= UPLOADING TO CLOUDINARY =============');
+    cloudinaryResult = await uploadToCloudinaryOptional(filePath, {
+      public_id: `statement_${Date.now()}_${path.parse(req.file.originalname).name}`,
+      folder: 'expense-tracker/statements'
     });
 
-    // Validate file type
-    if (req.file.mimetype !== 'application/pdf') {
-      return res.status(400).json({
-        success: false,
-        message: 'Bank statements must be PDF files',
-        error: 'INVALID_FILE_TYPE',
-        received: req.file.mimetype,
-        expected: 'application/pdf'
-      });
+    // Step 3: Parse transactions - TRY GEMINI FIRST
+    console.log('🤖 ============= PARSING TRANSACTIONS =============');
+    let transactions = await enhancedGeminiParsing(extractedText, req.file.originalname);
+    let parsingMethod = 'Gemini AI';
+
+    // If Gemini fails, use structured parsing
+    if (!transactions || transactions.length === 0) {
+      console.log('⚠️ Gemini failed, using structured parsing...');
+      transactions = parseTransactionData(extractedText);
+      parsingMethod = 'Structured Parser';
     }
 
-    const fileBuffer = req.file.buffer;
-    const userId = req.user._id || req.user.id;
-    const filename = req.file.originalname;
+    console.log(`🎯 Final transaction count: ${transactions.length}`);
 
-    console.log('👤 User ID:', userId);
-    console.log('📄 Processing PDF:', filename);
-
-    // Step 1: Upload to Cloudinary
-    console.log('☁️ Uploading PDF to Cloudinary...');
-    uploadResult = await uploadBufferToCloudinary(fileBuffer, filename, 'pdf');
-
-    // Step 2: Extract text from PDF
-    console.log('📄 Extracting text from PDF...');
-    const extractedText = await extractTextFromPdf(fileBuffer);
-    
-    if (!extractedText || extractedText.trim().length < 10) {
-      throw new Error('PDF text extraction failed or returned empty content');
-    }
-
-    console.log('📄 PDF text extraction completed:');
-    console.log('   📏 Length:', extractedText.length, 'characters');
-    console.log('   📄 Preview:', extractedText.substring(0, 200));
-
-    // Step 3: Parse using enhanced AI
-    let parsedTransactions = [];
-    let parsingMethod = '';
-    
-    try {
-      console.log('🤖 Parsing with enhanced Gemini AI...');
-      parsedTransactions = await callEnhancedGeminiAPI(extractedText, filename);
-      parsingMethod = 'Enhanced Gemini 1.5 Flash AI';
-    } catch (geminiError) {
-      console.log('⚠️ Gemini failed for PDF, using fallback...');
-      parsedTransactions = fallbackSmartParsing(extractedText);
-      parsingMethod = 'Enhanced Fallback Parsing';
-    }
-
-    console.log(`📊 Parsed ${parsedTransactions.length} transactions using ${parsingMethod}`);
-
-    // Step 4: Save transactions
+    // Step 4: Save to database
+    console.log('💾 ============= SAVING TO DATABASE =============');
     const savedTransactions = [];
-    for (const transactionData of parsedTransactions) {
-      try {
-        const transaction = new Transaction({
-          user: userId,
-          date: transactionData.date,
-          amount: transactionData.amount,
-          description: transactionData.description || 'Bank statement import',
-          category: transactionData.category || 'Bank Transaction',
-          type: transactionData.type || 'expense',
-          fileUrl: uploadResult.url,
-          needsManualReview: transactionData.needsManualReview,
-          extractedText: extractedText,
-          ocrMethod: 'PDF Processing',
-          aiParsed: parsingMethod.includes('Gemini'),
-          processingStats: {
-            ocrConfidence: 90,
-            processingTime: Date.now() - processingStartTime,
-            textLength: extractedText.length
-          }
-        });
+    const userId = req.user._id || req.user.id;
 
-        const saved = await transaction.save();
-        savedTransactions.push(saved);
-        
-        const status = saved.needsManualReview ? '🚨 NEEDS REVIEW' : `✅ ₹${saved.amount}`;
-        console.log(`💾 Saved: ${saved.description} - ${status}`);
-        
-      } catch (saveError) {
-        console.error('❌ Error saving transaction:', saveError.message);
+    if (transactions.length > 0) {
+      for (const [index, transactionData] of transactions.entries()) {
+        try {
+          console.log(`💾 Saving transaction ${index + 1}/${transactions.length}:`, {
+            amount: transactionData.amount,
+            description: transactionData.description,
+            type: transactionData.type,
+            category: transactionData.category
+          });
+
+          const transaction = new Transaction({
+            user: userId,
+            date: transactionData.date,
+            amount: transactionData.amount,
+            description: transactionData.description,
+            category: transactionData.category,
+            type: transactionData.type,
+            source: 'bank_statement',
+            fileUrl: cloudinaryResult?.secure_url || null,
+            extractedText: extractedText,
+            parsingMethod: parsingMethod,
+          });
+
+          const saved = await transaction.save();
+          savedTransactions.push(saved);
+          console.log(`✅ Saved transaction with ID: ${saved._id}`);
+        } catch (saveError) {
+          console.error(`❌ Save error for transaction ${index + 1}:`, saveError.message);
+        }
       }
     }
 
-    // Step 5: Generate response
-    const stats = {
-      totalTransactions: savedTransactions.length,
-      hasAmount: savedTransactions.filter(t => t.amount && t.amount > 0).length,
-      needsManualAmount: savedTransactions.filter(t => t.needsManualReview).length,
-      processingTime: Date.now() - processingStartTime,
-      extractionMethod: 'PDF Processing',
-      parsingMethod: parsingMethod
+    const processingTime = Date.now() - startTime;
+    console.log(`✅ BANK STATEMENT PROCESSING COMPLETE: ${savedTransactions.length} transactions saved`);
+
+    // ✅ CRITICAL FIX: Calculate proper statistics
+    const incomeTransactions = savedTransactions.filter(t => t.type === 'income');
+    const expenseTransactions = savedTransactions.filter(t => t.type === 'expense');
+    const totalIncome = incomeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const totalExpenses = expenseTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    // ✅ CRITICAL FIX: Send response in the EXACT format that frontend expects
+    const response = {
+      success: true,
+      message: `Bank statement processed successfully! Imported ${savedTransactions.length} transaction(s) using ${parsingMethod}.`,
+      data: {
+        transactions: savedTransactions, // ✅ Frontend needs this array
+        fileUrl: cloudinaryResult?.secure_url || null,
+        extractedText: extractedText.substring(0, 1000) + (extractedText.length > 1000 ? '...' : ''),
+        stats: { // ✅ Frontend uses this for displaying counts and amounts
+          transactionCount: savedTransactions.length,
+          incomeCount: incomeTransactions.length,
+          expenseCount: expenseTransactions.length,
+          totalIncome: totalIncome,
+          totalExpenses: totalExpenses,
+          netAmount: totalIncome - totalExpenses,
+          categories: [...new Set(savedTransactions.map(t => t.category))],
+          processingTime: processingTime,
+          parsingMethod: parsingMethod
+        },
+        processingDetails: {
+          fileName: req.file.originalname,
+          fileSize: (req.file.size / 1024 / 1024).toFixed(2) + 'MB',
+          processingTime: processingTime + 'ms',
+          extractionMethod: 'PDF Parse',
+          parsingMethod: parsingMethod
+        }
+      }
     };
 
-    console.log(`🎉 Bank statement processing completed in ${stats.processingTime}ms`);
-
-    res.json({
-      success: true,
-      message: `Successfully imported ${savedTransactions.length} transaction(s) from bank statement.${stats.needsManualAmount > 0 ? ` ${stats.needsManualAmount} transaction(s) need manual review.` : ''}`,
-      transactions: savedTransactions,
-      expenses: savedTransactions, // Also provide for frontend compatibility
-      fileUrl: uploadResult.url,
-      stats,
-      ocrPreview: extractedText.substring(0, 1000) + (extractedText.length > 1000 ? '...' : ''),
-      rawOcrText: extractedText
+    console.log('📤 ============= SENDING RESPONSE TO FRONTEND =============');
+    console.log(`📊 Response summary:`, {
+      success: response.success,
+      transactionCount: response.data.stats.transactionCount,
+      totalIncome: response.data.stats.totalIncome,
+      totalExpenses: response.data.stats.totalExpenses,
+      message: response.message
     });
 
+    // ✅ CRITICAL FIX: Actually send the JSON response
+    res.status(200).json(response);
+
   } catch (error) {
-    console.error('❌ Bank statement processing error:', error);
+    console.error('❌ ============= BANK STATEMENT ERROR =============');
+    console.error(`❌ Error:`, error.message);
     
-    // Cleanup on failure
-    if (uploadResult?.publicId) {
-      try {
-        await cloudinary.uploader.destroy(uploadResult.publicId);
-        console.log('🧹 Cleaned up failed upload');
-      } catch (cleanupError) {
-        console.warn('⚠️ Failed to cleanup upload:', cleanupError.message);
-      }
-    }
+    const processingTime = Date.now() - startTime;
     
+    // ✅ Send proper error response
     res.status(500).json({
       success: false,
       error: error.message || 'Bank statement processing failed',
-      processingTime: Date.now() - processingStartTime,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      processingTime: processingTime,
+      debug: {
+        step: 'processing_error',
+        timestamp: new Date().toISOString()
+      }
     });
+  } finally {
+    if (filePath) {
+      await cleanupFile(filePath);
+    }
+    console.log(`🏁 ============= SESSION ENDED =============`);
   }
-};
-
-// Apply error handling middleware
-router.use(handleMulterErrors);
+});
 
 module.exports = router;

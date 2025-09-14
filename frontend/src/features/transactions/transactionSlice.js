@@ -5,7 +5,7 @@ import { transactionAPI } from '../../services/api';
 const parseAmount = (amount) => {
   if (typeof amount === 'number' && !isNaN(amount)) return amount;
   if (typeof amount === 'string') {
-    const parsed = parseFloat(amount);
+    const parsed = parseFloat(amount.replace(/[^\d.-]/g, ''));
     return isNaN(parsed) ? 0 : parsed;
   }
   return 0;
@@ -14,55 +14,102 @@ const parseAmount = (amount) => {
 // ✅ Helper function to validate transaction data
 const validateTransaction = (transaction) => ({
   ...transaction,
+  _id: transaction._id || transaction.id,
   amount: parseAmount(transaction.amount),
   type: transaction.type || 'expense',
   category: transaction.category || 'Other',
   description: transaction.description || '',
   date: transaction.date || new Date().toISOString(),
+  createdAt: transaction.createdAt || new Date().toISOString(),
+  updatedAt: transaction.updatedAt || new Date().toISOString(),
 });
 
+// ✅ Enhanced fetch transactions with proper error handling
 export const fetchTransactions = createAsyncThunk(
   'transactions/fetchAll',
   async (params = {}, { rejectWithValue }) => {
     try {
-      console.log('🔄 Fetching transactions with params:', params);
-      const response = await transactionAPI.getAll(params);
-      console.log('✅ Transactions fetched successfully:', response);
+      console.log('🔄 Redux: Fetching transactions with params:', params);
       
-      // ✅ Handle both direct array and nested response formats
-      const transactions = response.data || response || [];
-      const validatedTransactions = Array.isArray(transactions) 
-        ? transactions.map(validateTransaction)
-        : [];
+      // Build query parameters
+      const queryParams = new URLSearchParams();
+      
+      // Add pagination params
+      if (params.page) queryParams.append('page', params.page);
+      if (params.limit) queryParams.append('limit', params.limit);
+      
+      // Add filter params
+      if (params.type) queryParams.append('type', params.type);
+      if (params.category) queryParams.append('category', params.category);
+      if (params.startDate) queryParams.append('startDate', params.startDate);
+      if (params.endDate) queryParams.append('endDate', params.endDate);
+      if (params.search) queryParams.append('search', params.search);
+      if (params.source) queryParams.append('source', params.source);
+      if (params.needsReview) queryParams.append('needsReview', params.needsReview);
+      
+      // Add sorting params
+      if (params.sort) queryParams.append('sort', params.sort);
+      if (params.order) queryParams.append('order', params.order);
 
-      return {
-        data: validatedTransactions,
-        pagination: response.pagination || null,
-        success: true
-      };
+      const response = await fetch(`http://localhost:5000/api/transactions?${queryParams}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Redux: Transactions fetched successfully:', data);
+      
+      if (data.success) {
+        // Validate all transactions
+        const validatedTransactions = Array.isArray(data.data) 
+          ? data.data.map(validateTransaction)
+          : [];
+
+        return {
+          data: validatedTransactions,
+          pagination: data.pagination || null,
+          summary: data.summary || null,
+          filters: data.filters || null,
+          success: true
+        };
+      } else {
+        throw new Error(data.error || 'Failed to fetch transactions');
+      }
     } catch (error) {
-      console.error('❌ Failed to fetch transactions:', error);
-      return rejectWithValue(
-        error.response?.data?.error || error.message || 'Failed to fetch transactions'
-      );
+      console.error('❌ Redux: Failed to fetch transactions:', error);
+      return rejectWithValue(error.message || 'Failed to fetch transactions');
     }
   }
 );
 
+// ✅ Enhanced create transaction
 export const createTransaction = createAsyncThunk(
   'transactions/create',
   async (transactionData, { rejectWithValue }) => {
     try {
-      console.log('🚀 Creating transaction with data:', transactionData);
+      console.log('🚀 Redux: Creating transaction with data:', transactionData);
       
       // ✅ Validate and format data before sending
       const validatedData = {
         amount: parseAmount(transactionData.amount),
-        category: transactionData.category || '',
-        description: transactionData.description || '',
+        category: (transactionData.category || '').trim(),
+        description: (transactionData.description || '').trim(),
         date: transactionData.date || new Date().toISOString(),
-        type: transactionData.type || 'expense',
-        ...(transactionData.merchant && { merchant: transactionData.merchant })
+        type: (transactionData.type || 'expense').toLowerCase(),
+        ...(transactionData.merchant && { merchant: transactionData.merchant.trim() }),
+        ...(transactionData.source && { source: transactionData.source }),
+        ...(transactionData.extractedText && { extractedText: transactionData.extractedText }),
+        ...(transactionData.parsingMethod && { parsingMethod: transactionData.parsingMethod }),
+        ...(transactionData.needsManualReview !== undefined && { needsManualReview: transactionData.needsManualReview }),
+        ...(transactionData.fileUrl && { fileUrl: transactionData.fileUrl })
       };
 
       // ✅ Additional validation
@@ -74,74 +121,213 @@ export const createTransaction = createAsyncThunk(
         return rejectWithValue('Category is required');
       }
 
-      if (!validatedData.type || !['income', 'expense'].includes(validatedData.type)) {
+      if (!['income', 'expense'].includes(validatedData.type)) {
         return rejectWithValue('Type must be either income or expense');
       }
 
-      console.log('📤 Sending validated data:', validatedData);
+      console.log('📤 Redux: Sending validated data:', validatedData);
       
-      const response = await transactionAPI.create(validatedData);
-      console.log('✅ Transaction created successfully:', response);
+      const response = await fetch('http://localhost:5000/api/transactions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(validatedData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Redux: Transaction created successfully:', data);
       
-      // ✅ Validate response data
-      const createdTransaction = validateTransaction(response.data || response);
-      
-      return createdTransaction;
+      if (data.success) {
+        const createdTransaction = validateTransaction(data.data);
+        return createdTransaction;
+      } else {
+        throw new Error(data.error || 'Failed to create transaction');
+      }
     } catch (error) {
-      console.error('❌ Transaction creation failed:', error);
-      return rejectWithValue(
-        error.response?.data?.error || error.message || 'Failed to create transaction'
-      );
+      console.error('❌ Redux: Transaction creation failed:', error);
+      return rejectWithValue(error.message || 'Failed to create transaction');
     }
   }
 );
 
+// ✅ Bulk create transactions (for upload functionality)
+export const createBulkTransactions = createAsyncThunk(
+  'transactions/createBulk',
+  async ({ transactions, source = 'bulk_upload' }, { rejectWithValue }) => {
+    try {
+      console.log('🚀 Redux: Creating bulk transactions:', transactions.length, 'items');
+      
+      // Validate transactions array
+      if (!Array.isArray(transactions) || transactions.length === 0) {
+        return rejectWithValue('Transactions array is required and must not be empty');
+      }
+
+      const response = await fetch('http://localhost:5000/api/transactions/bulk', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ transactions, source })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Redux: Bulk transactions created successfully:', data);
+      
+      if (data.success) {
+        const validatedTransactions = Array.isArray(data.data) 
+          ? data.data.map(validateTransaction)
+          : [];
+
+        return {
+          transactions: validatedTransactions,
+          summary: data.summary || null
+        };
+      } else {
+        throw new Error(data.error || 'Failed to create bulk transactions');
+      }
+    } catch (error) {
+      console.error('❌ Redux: Bulk transaction creation failed:', error);
+      return rejectWithValue(error.message || 'Failed to create bulk transactions');
+    }
+  }
+);
+
+// ✅ Enhanced update transaction
 export const updateTransaction = createAsyncThunk(
   'transactions/update',
   async ({ id, data }, { rejectWithValue }) => {
     try {
-      console.log('🔄 Updating transaction:', id, data);
+      console.log('🔄 Redux: Updating transaction:', id, data);
       
       // ✅ Validate update data
       const validatedData = {
         ...data,
         ...(data.amount && { amount: parseAmount(data.amount) }),
-        ...(data.date && { date: data.date })
+        ...(data.date && { date: data.date }),
+        ...(data.category && { category: data.category.trim() }),
+        ...(data.description !== undefined && { description: data.description.trim() }),
+        ...(data.type && { type: data.type.toLowerCase() })
       };
 
-      console.log('📤 Sending update data:', validatedData);
+      console.log('📤 Redux: Sending update data:', validatedData);
       
-      const response = await transactionAPI.update(id, validatedData);
-      console.log('✅ Transaction updated successfully:', response);
+      const response = await fetch(`http://localhost:5000/api/transactions/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(validatedData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const responseData = await response.json();
+      console.log('✅ Redux: Transaction updated successfully:', responseData);
       
-      const updatedTransaction = validateTransaction(response.data || response);
-      
-      return { 
-        originalId: id, 
-        transaction: updatedTransaction 
-      };
+      if (responseData.success) {
+        const updatedTransaction = validateTransaction(responseData.data);
+        return { 
+          originalId: id, 
+          transaction: updatedTransaction 
+        };
+      } else {
+        throw new Error(responseData.error || 'Failed to update transaction');
+      }
     } catch (error) {
-      console.error('❌ Failed to update transaction:', error);
-      return rejectWithValue(
-        error.response?.data?.error || error.message || 'Failed to update transaction'
-      );
+      console.error('❌ Redux: Failed to update transaction:', error);
+      return rejectWithValue(error.message || 'Failed to update transaction');
     }
   }
 );
 
+// ✅ Enhanced delete transaction
 export const deleteTransaction = createAsyncThunk(
   'transactions/delete',
   async (id, { rejectWithValue }) => {
     try {
-      console.log('🗑️ Deleting transaction:', id);
-      await transactionAPI.delete(id);
-      console.log('✅ Transaction deleted successfully');
-      return id;
+      console.log('🗑️ Redux: Deleting transaction:', id);
+      
+      const response = await fetch(`http://localhost:5000/api/transactions/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Redux: Transaction deleted successfully');
+      
+      if (data.success) {
+        return id;
+      } else {
+        throw new Error(data.error || 'Failed to delete transaction');
+      }
     } catch (error) {
-      console.error('❌ Failed to delete transaction:', error);
-      return rejectWithValue(
-        error.response?.data?.error || error.message || 'Failed to delete transaction'
-      );
+      console.error('❌ Redux: Failed to delete transaction:', error);
+      return rejectWithValue(error.message || 'Failed to delete transaction');
+    }
+  }
+);
+
+// ✅ Fetch transaction statistics
+export const fetchTransactionStats = createAsyncThunk(
+  'transactions/fetchStats',
+  async (params = {}, { rejectWithValue }) => {
+    try {
+      console.log('📊 Redux: Fetching transaction stats with params:', params);
+      
+      const queryParams = new URLSearchParams();
+      if (params.startDate) queryParams.append('startDate', params.startDate);
+      if (params.endDate) queryParams.append('endDate', params.endDate);
+      if (params.groupBy) queryParams.append('groupBy', params.groupBy);
+
+      const response = await fetch(`http://localhost:5000/api/transactions/stats?${queryParams}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Redux: Stats fetched successfully:', data);
+      
+      if (data.success) {
+        return data.data;
+      } else {
+        throw new Error(data.error || 'Failed to fetch stats');
+      }
+    } catch (error) {
+      console.error('❌ Redux: Failed to fetch stats:', error);
+      return rejectWithValue(error.message || 'Failed to fetch stats');
     }
   }
 );
@@ -152,7 +338,12 @@ const transactionSlice = createSlice({
     data: [],
     optimisticData: {},
     pagination: null,
+    summary: null,
+    stats: null,
     isLoading: false,
+    isCreating: false,
+    isUpdating: false,
+    isDeleting: false,
     error: null,
     filters: {
       search: '',
@@ -161,6 +352,9 @@ const transactionSlice = createSlice({
       startDate: null,
       endDate: null,
       page: 1,
+      limit: 50,
+      sort: 'date',
+      order: 'desc'
     },
     chartFilters: {
       activeCategory: null,
@@ -171,6 +365,8 @@ const transactionSlice = createSlice({
       totalExpenses: 0,
       netBalance: 0,
       transactionCount: 0,
+      incomeCount: 0,
+      expenseCount: 0,
     },
   },
   reducers: {
@@ -180,6 +376,7 @@ const transactionSlice = createSlice({
     
     setFilters: (state, action) => {
       state.filters = { ...state.filters, ...action.payload };
+      console.log('🔧 Redux: Filters updated:', state.filters);
     },
     
     clearFilters: (state) => {
@@ -190,11 +387,15 @@ const transactionSlice = createSlice({
         startDate: null,
         endDate: null,
         page: 1,
+        limit: 50,
+        sort: 'date',
+        order: 'desc'
       };
       state.chartFilters = {
         activeCategory: null,
         activeDateRange: null,
       };
+      console.log('🧹 Redux: Filters cleared');
     },
     
     setChartFilter: (state, action) => {
@@ -217,15 +418,10 @@ const transactionSlice = createSlice({
         tempId 
       };
       
+      console.log('⚡ Redux: Added optimistic transaction:', tempId);
+      
       // ✅ Safe stats update
-      const amount = parseAmount(validatedTransaction.amount);
-      if (validatedTransaction.type === 'income') {
-        state.realTimeStats.totalIncome += amount;
-      } else {
-        state.realTimeStats.totalExpenses += amount;
-      }
-      state.realTimeStats.netBalance = state.realTimeStats.totalIncome - state.realTimeStats.totalExpenses;
-      state.realTimeStats.transactionCount += 1;
+      transactionSlice.caseReducers.updateRealTimeStats(state);
     },
     
     updateOptimisticTransaction: (state, action) => {
@@ -235,26 +431,10 @@ const transactionSlice = createSlice({
         const oldTransaction = state.optimisticData[tempId];
         const newTransaction = validateTransaction({ ...oldTransaction, ...updates });
         
-        // ✅ Safe stats revert
-        const oldAmount = parseAmount(oldTransaction.amount);
-        const newAmount = parseAmount(newTransaction.amount);
-        
-        // Revert old stats
-        if (oldTransaction.type === 'income') {
-          state.realTimeStats.totalIncome -= oldAmount;
-        } else {
-          state.realTimeStats.totalExpenses -= oldAmount;
-        }
-        
-        // Apply new stats
-        if (newTransaction.type === 'income') {
-          state.realTimeStats.totalIncome += newAmount;
-        } else {
-          state.realTimeStats.totalExpenses += newAmount;
-        }
-        
         state.optimisticData[tempId] = newTransaction;
-        state.realTimeStats.netBalance = state.realTimeStats.totalIncome - state.realTimeStats.totalExpenses;
+        console.log('⚡ Redux: Updated optimistic transaction:', tempId);
+        
+        transactionSlice.caseReducers.updateRealTimeStats(state);
       }
     },
     
@@ -262,19 +442,10 @@ const transactionSlice = createSlice({
       const tempId = action.payload;
       
       if (state.optimisticData[tempId]) {
-        const transaction = state.optimisticData[tempId];
-        
-        // ✅ Safe stats revert
-        const amount = parseAmount(transaction.amount);
-        if (transaction.type === 'income') {
-          state.realTimeStats.totalIncome -= amount;
-        } else {
-          state.realTimeStats.totalExpenses -= amount;
-        }
-        state.realTimeStats.netBalance = state.realTimeStats.totalIncome - state.realTimeStats.totalExpenses;
-        state.realTimeStats.transactionCount = Math.max(0, state.realTimeStats.transactionCount - 1);
-        
         delete state.optimisticData[tempId];
+        console.log('⚡ Redux: Removed optimistic transaction:', tempId);
+        
+        transactionSlice.caseReducers.updateRealTimeStats(state);
       }
     },
     
@@ -290,35 +461,70 @@ const transactionSlice = createSlice({
           const amount = parseAmount(t.amount);
           if (t.type === 'income') {
             acc.totalIncome += amount;
+            acc.incomeCount++;
           } else if (t.type === 'expense') {
             acc.totalExpenses += amount;
+            acc.expenseCount++;
           }
           acc.transactionCount++;
           return acc;
-        }, { totalIncome: 0, totalExpenses: 0, transactionCount: 0 });
+        }, { 
+          totalIncome: 0, 
+          totalExpenses: 0, 
+          transactionCount: 0,
+          incomeCount: 0,
+          expenseCount: 0
+        });
         
         state.realTimeStats = {
           totalIncome: stats.totalIncome,
           totalExpenses: stats.totalExpenses,
           netBalance: stats.totalIncome - stats.totalExpenses,
           transactionCount: stats.transactionCount,
+          incomeCount: stats.incomeCount,
+          expenseCount: stats.expenseCount,
         };
+        
+        console.log('📊 Redux: Real-time stats updated:', state.realTimeStats);
       } catch (error) {
-        console.error('❌ Error updating real-time stats:', error);
+        console.error('❌ Redux: Error updating real-time stats:', error);
         // Reset to safe defaults if calculation fails
         state.realTimeStats = {
           totalIncome: 0,
           totalExpenses: 0,
           netBalance: 0,
           transactionCount: 0,
+          incomeCount: 0,
+          expenseCount: 0,
         };
       }
+    },
+
+    // ✅ New reducer for handling upload updates
+    handleUploadSuccess: (state, action) => {
+      const { transactions, stats } = action.payload;
+      
+      console.log('📤 Redux: Handling upload success:', transactions.length, 'transactions');
+      
+      // Add new transactions to the beginning of the array
+      const validatedTransactions = transactions.map(validateTransaction);
+      state.data = [...validatedTransactions, ...state.data];
+      
+      // Update stats if provided
+      if (stats) {
+        state.summary = { ...state.summary, ...stats };
+      }
+      
+      // Recalculate real-time stats
+      transactionSlice.caseReducers.updateRealTimeStats(state);
+      
+      console.log('✅ Redux: Upload success handled, new total:', state.data.length, 'transactions');
     },
   },
   
   extraReducers: (builder) => {
     builder
-      // Fetch transactions
+      // ✅ Fetch transactions
       .addCase(fetchTransactions.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -332,25 +538,26 @@ const transactionSlice = createSlice({
           ? responseData.data.map(validateTransaction)
           : [];
         state.pagination = responseData.pagination || null;
+        state.summary = responseData.summary || null;
         
         // Update real-time stats from fresh data
         transactionSlice.caseReducers.updateRealTimeStats(state);
         
-        console.log('✅ Transactions loaded:', state.data.length, 'transactions');
+        console.log('✅ Redux: Transactions loaded:', state.data.length, 'transactions');
       })
       .addCase(fetchTransactions.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
-        console.error('❌ Failed to fetch transactions:', action.payload);
+        console.error('❌ Redux: Failed to fetch transactions:', action.payload);
       })
       
-      // Create transaction
+      // ✅ Create transaction
       .addCase(createTransaction.pending, (state) => {
-        state.isLoading = true;
+        state.isCreating = true;
         state.error = null;
       })
       .addCase(createTransaction.fulfilled, (state, action) => {
-        state.isLoading = false;
+        state.isCreating = false;
         
         // ✅ Safe transaction addition with validation
         const realTransaction = validateTransaction(action.payload);
@@ -375,22 +582,51 @@ const transactionSlice = createSlice({
         // Recalculate stats
         transactionSlice.caseReducers.updateRealTimeStats(state);
         
-        console.log('✅ Transaction created and added to state:', realTransaction);
+        console.log('✅ Redux: Transaction created and added to state:', realTransaction._id);
       })
       .addCase(createTransaction.rejected, (state, action) => {
-        state.isLoading = false;
+        state.isCreating = false;
         state.error = action.payload;
-        console.error('❌ Failed to create transaction:', action.payload);
-        // Keep optimistic data for user to retry
+        console.error('❌ Redux: Failed to create transaction:', action.payload);
+      })
+
+      // ✅ Bulk create transactions
+      .addCase(createBulkTransactions.pending, (state) => {
+        state.isCreating = true;
+        state.error = null;
+      })
+      .addCase(createBulkTransactions.fulfilled, (state, action) => {
+        state.isCreating = false;
+        
+        const { transactions, summary } = action.payload;
+        const validatedTransactions = transactions.map(validateTransaction);
+        
+        // Add new transactions to the beginning
+        state.data = [...validatedTransactions, ...state.data];
+        
+        // Update summary if provided
+        if (summary) {
+          state.summary = { ...state.summary, ...summary };
+        }
+        
+        // Recalculate stats
+        transactionSlice.caseReducers.updateRealTimeStats(state);
+        
+        console.log('✅ Redux: Bulk transactions created:', validatedTransactions.length, 'items');
+      })
+      .addCase(createBulkTransactions.rejected, (state, action) => {
+        state.isCreating = false;
+        state.error = action.payload;
+        console.error('❌ Redux: Failed to create bulk transactions:', action.payload);
       })
       
-      // Update transaction
+      // ✅ Update transaction
       .addCase(updateTransaction.pending, (state) => {
-        state.isLoading = true;
+        state.isUpdating = true;
         state.error = null;
       })
       .addCase(updateTransaction.fulfilled, (state, action) => {
-        state.isLoading = false;
+        state.isUpdating = false;
         
         const { originalId, transaction } = action.payload;
         const validatedTransaction = validateTransaction(transaction);
@@ -399,38 +635,54 @@ const transactionSlice = createSlice({
         const index = state.data.findIndex(t => t._id === originalId);
         if (index !== -1) {
           state.data[index] = validatedTransaction;
-          console.log('✅ Transaction updated in state:', validatedTransaction);
+          console.log('✅ Redux: Transaction updated in state:', validatedTransaction._id);
         }
         
         transactionSlice.caseReducers.updateRealTimeStats(state);
       })
       .addCase(updateTransaction.rejected, (state, action) => {
-        state.isLoading = false;
+        state.isUpdating = false;
         state.error = action.payload;
-        console.error('❌ Failed to update transaction:', action.payload);
+        console.error('❌ Redux: Failed to update transaction:', action.payload);
       })
       
-      // Delete transaction
+      // ✅ Delete transaction
       .addCase(deleteTransaction.pending, (state) => {
-        state.isLoading = true;
+        state.isDeleting = true;
         state.error = null;
       })
       .addCase(deleteTransaction.fulfilled, (state, action) => {
-        state.isLoading = false;
+        state.isDeleting = false;
         
         // ✅ Safe array filtering
         const deletedId = action.payload;
         const originalLength = state.data.length;
         state.data = state.data.filter(t => t._id !== deletedId);
         
-        console.log(`✅ Transaction deleted. Removed ${originalLength - state.data.length} items`);
+        console.log(`✅ Redux: Transaction deleted. Removed ${originalLength - state.data.length} items`);
         
         transactionSlice.caseReducers.updateRealTimeStats(state);
       })
       .addCase(deleteTransaction.rejected, (state, action) => {
+        state.isDeleting = false;
+        state.error = action.payload;
+        console.error('❌ Redux: Failed to delete transaction:', action.payload);
+      })
+
+      // ✅ Fetch stats
+      .addCase(fetchTransactionStats.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(fetchTransactionStats.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.stats = action.payload;
+        console.log('✅ Redux: Transaction stats loaded');
+      })
+      .addCase(fetchTransactionStats.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload;
-        console.error('❌ Failed to delete transaction:', action.payload);
+        console.error('❌ Redux: Failed to fetch stats:', action.payload);
       });
   },
 });
@@ -443,7 +695,8 @@ export const {
   addOptimisticTransaction,
   updateOptimisticTransaction,
   removeOptimisticTransaction,
-  updateRealTimeStats
+  updateRealTimeStats,
+  handleUploadSuccess
 } = transactionSlice.actions;
 
 export default transactionSlice.reducer;
