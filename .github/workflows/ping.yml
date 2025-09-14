@@ -1,0 +1,16 @@
+name: Keep Render Alive
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes
+  workflow_dispatch:        # allow manual trigger
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Typeface Project
+        run: curl -s https://typeface-project.onrender.com > /dev/null 2>&1
+
+      - name: Ping Finance Tracker
+        run: curl -s https://finance-tracker-49qx.onrender.com > /dev/null 2>&1
