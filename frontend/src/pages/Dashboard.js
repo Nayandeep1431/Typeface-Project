@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Grid,
@@ -11,6 +11,19 @@ import {
   Button,
   Snackbar,
   Alert,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemIcon,
+  CircularProgress,
+  Menu,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Select,
+  IconButton,
+  Chip,
+  LinearProgress,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -18,451 +31,755 @@ import {
   AccountBalance,
   CreditCard,
   Add as AddIcon,
+  FilterList,
+  MoreVert,
+  Edit,
+  Delete,
+  Visibility,
+  Assessment,
+  Savings,
+  AccountBalanceWallet,
+  CalendarToday,
+  Category,
+  Receipt,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
+import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import dayjs from 'dayjs';
-import { 
-  fetchTransactions, 
-  setChartFilter, 
-  addOptimisticTransaction,
-  removeOptimisticTransaction,
-  createTransaction 
-} from '../features/transactions/transactionSlice';
-import TransactionForm from '../components/TransactionForm';
-import { 
-  InteractivePieChart, 
-  InteractiveLineChart, 
-  InteractiveBarChart 
-} from '../components/Charts/InteractiveCharts';
-import { 
-  FadeIn, 
-  SlideIn, 
-  StaggerContainer, 
-  StaggerItem, 
-  AnimatedCard,
-  AnimatedNumber 
-} from '../components/Animations/AnimatedComponents';
-import { useOptimisticUpdates } from '../hooks/useOptimisticUpdates';
+import { fetchTransactions, deleteTransaction, updateTransaction } from '../features/transactions/transactionSlice';
+import { transactionAPI } from '../services/api';
 
-const StatCard = ({ title, value, icon, color, trend, trendValue, index, isOptimistic = false }) => {
-  const getGradientColors = (color) => {
-    switch (color) {
-      case 'success':
-        return 'linear-gradient(135deg, #10b981, #34d399)';
-      case 'error':
-        return 'linear-gradient(135deg, #ef4444, #f87171)';
-      case 'primary':
-        return 'linear-gradient(135deg, #2563eb, #3b82f6)';
-      case 'warning':
-        return 'linear-gradient(135deg, #f59e0b, #fbbf24)';
-      case 'info':
-        return 'linear-gradient(135deg, #06b6d4, #67e8f9)';
-      default:
-        return 'linear-gradient(135deg, #6b7280, #9ca3af)';
-    }
-  };
+// ✅ FIXED: Move COLORS constant to top, before component definition
+const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#0088fe', '#00c49f', '#ffbb28'];
 
-  return (
-    <StaggerItem index={index}>
-      <AnimatedCard>
-        <Card 
-          sx={{ 
-            height: '100%', 
-            borderRadius: 3,
-            background: getGradientColors(color),
-            position: 'relative',
-            overflow: 'hidden',
-            border: isOptimistic ? '2px solid #fff' : 'none',
-            transition: 'all 0.3s ease-in-out',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: isOptimistic 
-                ? 'linear-gradient(45deg, rgba(255,255,255,0.2) 0%, transparent 50%)'
-                : 'linear-gradient(45deg, rgba(255,255,255,0.1) 0%, transparent 50%)',
-              pointerEvents: 'none',
-            }
-          }}
-        >
-          <CardContent sx={{ position: 'relative', zIndex: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <motion.div
-                animate={isOptimistic ? { rotate: [0, 10, -10, 0] } : {}}
-                transition={{ duration: 0.5, repeat: isOptimistic ? Infinity : 0, repeatDelay: 2 }}
-              >
-                <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', mr: 2 }}>
-                  {icon}
-                </Avatar>
-              </motion.div>
-              <Box sx={{ flexGrow: 1 }}>
-                <Typography variant="body2" sx={{ color: 'white', opacity: 0.9, fontWeight: 500 }}>
-                  {title} {isOptimistic && '(Updating...)'}
-                </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: 'white' }}>
-                  ₹<AnimatedNumber value={value} />
-                </Typography>
-              </Box>
-            </Box>
-            {trendValue && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <motion.div
-                    animate={{ y: [0, -2, 0] }}
-                    transition={{ repeat: Infinity, duration: 2 }}
-                  >
-                    {trend === 'up' ? (
-                      <TrendingUp sx={{ color: 'white', fontSize: 16, mr: 0.5 }} />
-                    ) : (
-                      <TrendingDown sx={{ color: 'white', fontSize: 16, mr: 0.5 }} />
-                    )}
-                  </motion.div>
-                  <Typography variant="body2" sx={{ color: 'white', opacity: 0.9 }}>
-                    {trendValue}% from last month
-                  </Typography>
-                </Box>
-              </motion.div>
-            )}
-          </CardContent>
-        </Card>
-      </AnimatedCard>
-    </StaggerItem>
-  );
+// ✅ FIXED: Format currency helper moved outside component with safe fallback
+const formatCurrency = (amount) => {
+  const safeAmount = typeof amount === 'number' ? amount : 0;
+  return `₹${Math.abs(safeAmount).toLocaleString('en-IN')}`;
 };
 
 const Dashboard = () => {
   const dispatch = useDispatch();
-
-  // ✅ ALL HOOKS AT TOP LEVEL - FIXED
-  const { 
-    data: transactions = [], 
-    optimisticData = {},
-    realTimeStats = {}, 
-    chartFilters = {}
-  } = useSelector((state) => state.transactions);
-
-  const [openForm, setOpenForm] = useState(false);
+  
+  // ✅ ALL HOOKS AT TOP LEVEL - BEFORE ANY CONDITIONAL LOGIC
+  const { data: transactions = [], isLoading, error } = useSelector((state) => state.transactions);
+  const { user } = useSelector((state) => state.auth);
+  
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
-
-  // ✅ MOVED useOptimisticUpdates TO TOP LEVEL - FIXED
-  const {
-    addOptimisticTransaction: addOptimistic,
-    confirmOptimisticTransaction,
-    revertOptimisticTransaction,
-  } = useOptimisticUpdates();
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [timeFilter, setTimeFilter] = useState('30'); // days
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [stats, setStats] = useState({
+    totalIncome: 0,
+    totalExpenses: 0,
+    netBalance: 0,
+    transactionCount: 0,
+    categoriesCount: 0,
+    avgDailySpending: 0
+  });
 
   // ✅ All other hooks
   useEffect(() => {
     dispatch(fetchTransactions());
   }, [dispatch]);
 
-  // Combine real and optimistic data for display
-  const allTransactions = [...transactions, ...Object.values(optimisticData)];
+  // ✅ Calculate filtered transactions with safe amount handling
+  const filteredTransactions = useMemo(() => {
+    if (!transactions || !Array.isArray(transactions)) {
+      return [];
+    }
 
-  // Calculate statistics with real-time updates
-  const stats = allTransactions.reduce((acc, transaction) => {
-    if (transaction.type === 'income') {
-      acc.totalIncome += transaction.amount;
-    } else {
-      acc.totalExpenses += transaction.amount;
-      if (!acc.expensesByCategory[transaction.category]) {
-        acc.expensesByCategory[transaction.category] = 0;
+    let filtered = transactions.map(t => ({
+      ...t,
+      amount: typeof t.amount === 'number' ? t.amount : 0 // ✅ SAFE FALLBACK
+    }));
+
+    // Filter by category
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(t => t.category === selectedCategory);
+    }
+
+    // Filter by time
+    const now = new Date();
+    const timeFilterDays = parseInt(timeFilter);
+    const filterDate = new Date(now.getTime() - timeFilterDays * 24 * 60 * 60 * 1000);
+    
+    filtered = filtered.filter(t => {
+      const transactionDate = new Date(t.date);
+      return transactionDate >= filterDate;
+    });
+
+    return filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [transactions, selectedCategory, timeFilter]);
+
+  // ✅ Calculate statistics with safe amount handling
+  useEffect(() => {
+    const calculateStats = () => {
+      if (!filteredTransactions.length) {
+        setStats({
+          totalIncome: 0,
+          totalExpenses: 0,
+          netBalance: 0,
+          transactionCount: 0,
+          categoriesCount: 0,
+          avgDailySpending: 0
+        });
+        return;
       }
-      acc.expensesByCategory[transaction.category] += transaction.amount;
+
+      const totalIncome = filteredTransactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0);
+
+      const totalExpenses = filteredTransactions
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0);
+
+      const categories = new Set(filteredTransactions.map(t => t.category));
+      const days = parseInt(timeFilter);
+
+      setStats({
+        totalIncome,
+        totalExpenses,
+        netBalance: totalIncome - totalExpenses,
+        transactionCount: filteredTransactions.length,
+        categoriesCount: categories.size,
+        avgDailySpending: totalExpenses / days
+      });
+    };
+
+    calculateStats();
+  }, [filteredTransactions, timeFilter]);
+
+  // ✅ Get category data for pie chart with safe amount handling
+  const categoryData = useMemo(() => {
+    const categoryBreakdown = {};
+    
+    filteredTransactions
+      .filter(t => t.type === 'expense')
+      .forEach(t => {
+        const category = t.category || 'Other';
+        const amount = typeof t.amount === 'number' ? t.amount : 0;
+        categoryBreakdown[category] = (categoryBreakdown[category] || 0) + amount;
+      });
+
+    return Object.entries(categoryBreakdown)
+      .map(([name, value], index) => ({
+        name,
+        value,
+        color: COLORS[index % COLORS.length]
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6); // Top 6 categories
+  }, [filteredTransactions]);
+
+  // ✅ Get recent transactions chart data with safe amount handling
+  const chartData = useMemo(() => {
+    const last7Days = [];
+    const now = new Date();
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = date.toISOString().split('T')[0];
+      const dayTransactions = filteredTransactions.filter(t => 
+        t.date && t.date.split('T')[0] === dateStr
+      );
+      
+      const income = dayTransactions
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0);
+      
+      const expenses = dayTransactions
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0);
+
+      last7Days.push({
+        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        income,
+        expenses,
+        net: income - expenses
+      });
     }
-    return acc;
-  }, {
-    totalIncome: 0,
-    totalExpenses: 0,
-    expensesByCategory: {},
-  });
+    
+    return last7Days;
+  }, [filteredTransactions]);
 
-  const totalBalance = stats.totalIncome - stats.totalExpenses;
-  const savings = totalBalance > 0 ? totalBalance : 0;
-  const hasOptimisticData = Object.keys(optimisticData).length > 0;
-
-  // Prepare chart data (Pie chart updates automatically whenever stats changes)
-  const expenseData = Object.entries(stats.expensesByCategory).map(([name, value]) => ({
-    name,
-    value,
-  }));
-
-  const dailyData = {};
-  allTransactions.forEach(transaction => {
-    const date = dayjs(transaction.date).format('MMM DD');
-    if (!dailyData[date]) {
-      dailyData[date] = { date, income: 0, expenses: 0 };
-    }
-    if (transaction.type === 'income') {
-      dailyData[date].income += transaction.amount;
-    } else {
-      dailyData[date].expenses += transaction.amount;
-    }
-    dailyData[date].net = dailyData[date].income - dailyData[date].expenses;
-  });
-
-  const trendData = Object.values(dailyData).sort((a, b) => 
-    dayjs(a.date, 'MMM DD').valueOf() - dayjs(b.date, 'MMM DD').valueOf()
-  );
-
-  // Handle chart interactions
-  const handlePieChartClick = (categoryName) => {
-    dispatch(setChartFilter({ activeCategory: categoryName }));
+  // ✅ Event handlers
+  const handleCategoryFilter = useCallback((categoryName) => {
+    setSelectedCategory(categoryName === selectedCategory ? 'all' : categoryName);
     setNotification({
       open: true,
       message: categoryName 
-        ? `Filtered transactions by category: ${categoryName}` // ✅ FIXED: Added backticks
+        ? `Filtered transactions by category: ${categoryName}`
         : 'Cleared category filter',
       severity: 'info'
     });
-  };
+  }, [selectedCategory]);
 
-  const handleLineChartClick = (data, lineKey) => {
-    setNotification({
-      open: true,
-      message: `${data.date}: ${lineKey} = ₹${data[lineKey]?.toLocaleString('en-IN')}`, // ✅ FIXED: Added backticks
-      severity: 'info'
-    });
-  };
+  const handleMenuClick = useCallback((event, transaction) => {
+    setAnchorEl(event.currentTarget);
+    setSelectedTransaction(transaction);
+  }, []);
 
-  // Handle optimistic transaction creation
-  const handleOptimisticCreate = async (transactionData) => {
-    const tempId = `temp_${Date.now()}`; // ✅ FIXED: Added backticks
-    
+  const handleMenuClose = useCallback(() => {
+    setAnchorEl(null);
+    setSelectedTransaction(null);
+  }, []);
+
+  const handleDeleteTransaction = useCallback(async () => {
+    if (!selectedTransaction) return;
+
     try {
-      const optimisticTransaction = addOptimistic(tempId, transactionData);
-      dispatch(addOptimisticTransaction({ tempId, transaction: optimisticTransaction }));
+      setDeleteLoading(true);
+      await dispatch(deleteTransaction(selectedTransaction._id)).unwrap();
       
       setNotification({
         open: true,
-        message: 'Transaction added! Syncing with server...',
-        severity: 'info'
-      });
-
-      const result = await dispatch(createTransaction(transactionData)).unwrap();
-      confirmOptimisticTransaction(tempId, result);
-      dispatch(removeOptimisticTransaction(tempId));
-      
-      setNotification({
-        open: true,
-        message: 'Transaction successfully saved!',
+        message: 'Transaction deleted successfully',
         severity: 'success'
       });
     } catch (error) {
-      revertOptimisticTransaction(tempId);
-      dispatch(removeOptimisticTransaction(tempId));
-      
       setNotification({
         open: true,
-        message: 'Failed to save transaction. Please try again.',
+        message: `Failed to delete transaction: ${error.message}`,
         severity: 'error'
       });
+    } finally {
+      setDeleteLoading(false);
+      handleMenuClose();
     }
-  };
+  }, [selectedTransaction, dispatch]);
+
+  const handleNotificationClose = useCallback(() => {
+    setNotification(prev => ({ ...prev, open: false }));
+  }, []);
+
+  const loadExpenses = useCallback(async () => {
+    dispatch(fetchTransactions());
+  }, [dispatch]);
+
+  // ✅ CONDITIONAL RENDERING AFTER ALL HOOKS
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Error loading dashboard: {error}
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
-    <Box>
-      <FadeIn>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700 }}>
-            Dashboard Overview
-            {hasOptimisticData && (
-              <motion.span
-                animate={{ opacity: [1, 0.5, 1] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-              >
-                <Typography component="span" variant="caption" sx={{ ml: 2, color: 'primary.main' }}>
-                  • Syncing...
-                </Typography>
-              </motion.span>
-            )}
+    <Box sx={{ p: 3 }}>
+      {/* Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+            Welcome back, {user?.name || 'User'}! 👋
           </Typography>
-          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={() => setOpenForm(true)}
-              sx={{ px: 3, py: 1.5 }}
-            >
-              Quick Add
-            </Button>
-          </motion.div>
+          <Typography variant="body1" color="text.secondary">
+            Here's your financial overview for the selected period
+          </Typography>
         </Box>
-      </FadeIn>
+        
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Time Period</InputLabel>
+            <Select
+              value={timeFilter}
+              onChange={(e) => setTimeFilter(e.target.value)}
+              label="Time Period"
+            >
+              <MenuItem value="7">Last 7 days</MenuItem>
+              <MenuItem value="30">Last 30 days</MenuItem>
+              <MenuItem value="90">Last 3 months</MenuItem>
+              <MenuItem value="365">Last year</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+      </Box>
 
-      {/* Stats */}
-      <StaggerContainer staggerDelay={0.1}>
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard 
-              title="Total Balance" 
-              value={totalBalance} 
-              icon={<AccountBalance />} 
-              color="primary" 
-              trend={totalBalance >= 0 ? "up" : "down"} 
-              trendValue={12} 
-              index={0} 
-              isOptimistic={hasOptimisticData} 
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard 
-              title="Total Income" 
-              value={stats.totalIncome} 
-              icon={<TrendingUp />} 
-              color="success" 
-              trend="up" 
-              trendValue={8} 
-              index={1} 
-              isOptimistic={hasOptimisticData} 
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard 
-              title="Total Expenses" 
-              value={stats.totalExpenses} 
-              icon={<TrendingDown />} 
-              color="error" 
-              trend="down" 
-              trendValue={5} 
-              index={2} 
-              isOptimistic={hasOptimisticData} 
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard 
-              title="Savings" 
-              value={savings} 
-              icon={<CreditCard />} 
-              color="warning" 
-              trend={savings > 0 ? "up" : "down"} 
-              trendValue={15} 
-              index={3} 
-              isOptimistic={hasOptimisticData} 
-            />
-          </Grid>
-        </Grid>
-      </StaggerContainer>
+      {/* Loading State */}
+      {isLoading && (
+        <LinearProgress sx={{ mb: 3, borderRadius: 1 }} />
+      )}
 
-      {/* Charts */}
-      <SlideIn direction="up" delay={0.4}>
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} md={6}>
-            <InteractivePieChart
-              data={expenseData}
-              onSegmentClick={handlePieChartClick}
-              activeSegment={chartFilters.activeCategory}
-              title="Expense Categories (Click to Filter)"
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <InteractiveLineChart
-              data={trendData}
-              onPointClick={handleLineChartClick}
-              title="Daily Trends (Click for Details)"
-            />
-          </Grid>
+      {/* Statistics Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
+            <Card sx={{ 
+              borderRadius: 3, 
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
+              height: '100%'
+            }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                    <AccountBalance />
+                  </Avatar>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    Net Balance
+                  </Typography>
+                </Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                  {formatCurrency(stats.netBalance)}
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  {stats.netBalance >= 0 ? '📈 Positive' : '📉 Deficit'}
+                </Typography>
+              </CardContent>
+            </Card>
+          </motion.div>
         </Grid>
-      </SlideIn>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
+            <Card sx={{ 
+              borderRadius: 3,
+              background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              color: 'white',
+              height: '100%'
+            }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                    <TrendingUp />
+                  </Avatar>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    Total Income
+                  </Typography>
+                </Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                  {formatCurrency(stats.totalIncome)}
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  Last {timeFilter} days
+                </Typography>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
+            <Card sx={{ 
+              borderRadius: 3,
+              background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+              color: 'white',
+              height: '100%'
+            }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                    <TrendingDown />
+                  </Avatar>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    Total Expenses
+                  </Typography>
+                </Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                  {formatCurrency(stats.totalExpenses)}
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  Last {timeFilter} days
+                </Typography>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <motion.div whileHover={{ scale: 1.02 }} transition={{ duration: 0.2 }}>
+            <Card sx={{ 
+              borderRadius: 3,
+              background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+              color: 'white',
+              height: '100%'
+            }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                  <Avatar sx={{ bgcolor: 'rgba(255,255,255,0.2)', mr: 2 }}>
+                    <Receipt />
+                  </Avatar>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    Transactions
+                  </Typography>
+                </Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+                  {stats.transactionCount}
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  {stats.categoriesCount} categories
+                </Typography>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </Grid>
+      </Grid>
+
+      {/* Charts and Recent Transactions */}
+      {/* ✅ Professional Container - 9/12 (75%) width with flexbox */}
+<Box sx={{
+  width: '75%', // 9/12 of page width
+  maxWidth: '1400px',
+  mx: 'auto', // Center horizontally
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'space-evenly',
+  gap: 4,
+  mb: 4,
+  px: 3
+}}>
+  <Grid container spacing={4} sx={{ width: '100%' }}>
+    {/* ✅ Enhanced Weekly Trend Chart - Full width in container */}
+    <Grid item xs={12} lg={8}>
+      <Paper sx={{ 
+        p: 4, 
+        borderRadius: 4, 
+        height: 500,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+        border: '1px solid rgba(0,0,0,0.05)',
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          transform: 'translateY(-2px)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.12)'
+        }
+      }}>
+        {/* ✅ Professional Header */}
+        <Box sx={{ 
+          mb: 3, 
+          pb: 2, 
+          borderBottom: '1px solid', 
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2
+        }}>
+          <Box sx={{
+            width: 8,
+            height: 40,
+            bgcolor: 'primary.main',
+            borderRadius: 1
+          }} />
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
+              📈 Weekly Financial Trends
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              7-day income vs expenses analysis
+            </Typography>
+          </Box>
+        </Box>
+        
+        <Box sx={{ height: 'calc(100% - 100px)' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart 
+              data={chartData}
+              margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis 
+                dataKey="date" 
+                tick={{ fontSize: 12, fill: '#666' }}
+                axisLine={{ stroke: '#e0e0e0' }}
+              />
+              <YAxis 
+                tickFormatter={(value) => formatCurrency(value)}
+                tick={{ fontSize: 12, fill: '#666' }}
+                axisLine={{ stroke: '#e0e0e0' }}
+              />
+              <RechartsTooltip 
+                formatter={(value, name) => [formatCurrency(value), name]}
+                labelStyle={{ color: '#333', fontWeight: 600 }}
+                contentStyle={{
+                  backgroundColor: 'white',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                }}
+              />
+              <Legend 
+                wrapperStyle={{ paddingTop: '20px' }}
+                iconType="line"
+              />
+              <Line 
+                type="monotone" 
+                dataKey="income" 
+                stroke="#4CAF50" 
+                strokeWidth={4}
+                dot={{ fill: '#4CAF50', strokeWidth: 2, r: 5 }}
+                activeDot={{ r: 7, stroke: '#4CAF50', strokeWidth: 2 }}
+                name="💰 Income"
+              />
+              <Line 
+                type="monotone" 
+                dataKey="expenses" 
+                stroke="#f44336" 
+                strokeWidth={4}
+                dot={{ fill: '#f44336', strokeWidth: 2, r: 5 }}
+                activeDot={{ r: 7, stroke: '#f44336', strokeWidth: 2 }}
+                name="💸 Expenses"
+              />
+              <Line 
+                type="monotone" 
+                dataKey="net" 
+                stroke="#2196F3" 
+                strokeWidth={3}
+                strokeDasharray="8 8"
+                dot={{ fill: '#2196F3', strokeWidth: 2, r: 4 }}
+                activeDot={{ r: 6, stroke: '#2196F3', strokeWidth: 2 }}
+                name="📊 Net Flow"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </Box>
+      </Paper>
+    </Grid>
+
+    {/* ✅ Enhanced Category Breakdown - Full width in container */}
+    <Grid item xs={12} lg={4}>
+      <Paper sx={{ 
+        p: 4, 
+        borderRadius: 4, 
+        height: 500,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
+        border: '1px solid rgba(0,0,0,0.05)',
+        transition: 'all 0.3s ease',
+        '&:hover': {
+          transform: 'translateY(-2px)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.12)'
+        }
+      }}>
+        {/* ✅ Professional Header */}
+        <Box sx={{ 
+          mb: 3, 
+          pb: 2, 
+          borderBottom: '1px solid', 
+          borderColor: 'divider',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 2
+        }}>
+          <Box sx={{
+            width: 8,
+            height: 40,
+            bgcolor: 'warning.main',
+            borderRadius: 1
+          }} />
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
+              🎯 Expense Categories
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Spending breakdown analysis
+            </Typography>
+          </Box>
+        </Box>
+
+        {categoryData.length > 0 ? (
+          <Box sx={{ height: 'calc(100% - 100px)', display: 'flex', alignItems: 'center' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={categoryData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => 
+                    percent > 5 ? `${name.length > 8 ? name.substring(0, 8) + '...' : name}` : ''
+                  }
+                  outerRadius={120}
+                  innerRadius={50}
+                  fill="#8884d8"
+                  dataKey="value"
+                  stroke="#fff"
+                  strokeWidth={3}
+                >
+                  {categoryData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <RechartsTooltip 
+                  formatter={(value, name) => [formatCurrency(value), name]}
+                  contentStyle={{
+                    backgroundColor: 'white',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </Box>
+        ) : (
+          <Box sx={{ 
+            height: 'calc(100% - 100px)',
+            display: 'flex', 
+            flexDirection: 'column',
+            alignItems: 'center', 
+            justifyContent: 'center',
+            py: 6
+          }}>
+            <Box sx={{
+              width: 80,
+              height: 80,
+              borderRadius: '50%',
+              bgcolor: 'grey.100',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              mb: 3
+            }}>
+              <Typography variant="h3" sx={{ color: 'grey.400' }}>
+                📊
+              </Typography>
+            </Box>
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              No Data Available
+            </Typography>
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              No expense data available for the selected period
+            </Typography>
+          </Box>
+        )}
+      </Paper>
+    </Grid>
+  </Grid>
+</Box>
+
 
       {/* Recent Transactions */}
-      <SlideIn direction="up" delay={0.6}>
-        <AnimatedCard>
-          <Paper sx={{ p: 3, borderRadius: 3 }}>
-            <Typography variant="h6" sx={{ mb: 3, fontWeight: 600 }}>
-              Recent Transactions
-              {hasOptimisticData && (
-                <Typography component="span" variant="caption" sx={{ ml: 2, color: 'primary.main' }}>
-                  (Including pending updates)
-                </Typography>
-              )}
-            </Typography>
-            <AnimatePresence mode="popLayout">
-              {allTransactions.slice(0, 5).map((transaction, index) => (
-                <motion.div
-                  key={transaction._id || transaction.tempId}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  transition={{ delay: index * 0.1 }}
-                  layout
+      <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
+        <Box sx={{ p: 3, bgcolor: 'primary.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Recent Transactions ({filteredTransactions.length})
+          </Typography>
+          <IconButton 
+            onClick={loadExpenses} 
+            disabled={isLoading}
+            sx={{ color: 'white' }}
+          >
+            <RefreshIcon />
+          </IconButton>
+        </Box>
+        
+        <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+          {filteredTransactions.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 8 }}>
+              <Receipt sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+              <Typography variant="h6" color="text.secondary" gutterBottom>
+                No transactions found
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Try adjusting your filters or add some transactions
+              </Typography>
+            </Box>
+          ) : (
+            <List>
+              {filteredTransactions.slice(0, 10).map((transaction, index) => (
+                <ListItem 
+                  key={transaction._id || index}
+                  sx={{ 
+                    borderBottom: '1px solid #f0f0f0',
+                    '&:hover': { bgcolor: 'grey.50' }
+                  }}
                 >
-                  <Box 
-                    sx={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      py: 2, 
-                      px: 2,
-                      borderBottom: '1px solid', 
-                      borderColor: 'divider',
-                      borderRadius: 2,
-                      mb: 1,
-                      backgroundColor: transaction.isOptimistic ? 'action.hover' : 'transparent',
-                      opacity: transaction.isOptimistic ? 0.8 : 1,
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        backgroundColor: 'action.hover',
-                        transform: 'translateX(4px)',
-                      }
-                    }}
-                  >
-                    <Box>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {transaction.description || transaction.category}
-                        {transaction.isOptimistic && (
-                          <Typography component="span" variant="caption" sx={{ ml: 1, color: 'primary.main' }}>
-                            (Syncing...)
+                  <ListItemIcon>
+                    <Avatar sx={{ 
+                      bgcolor: transaction.type === 'income' ? 'success.main' : 'error.main',
+                      width: 40,
+                      height: 40
+                    }}>
+                      {transaction.type === 'income' ? <TrendingUp /> : <TrendingDown />}
+                    </Avatar>
+                  </ListItemIcon>
+                  
+                  <ListItemText
+                    primary={
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                          {transaction.description || transaction.category}
+                        </Typography>
+                        <Typography 
+                          variant="h6" 
+                          sx={{ 
+                            fontWeight: 700,
+                            color: transaction.type === 'income' ? 'success.main' : 'error.main'
+                          }}
+                        >
+                          {/* ✅ FIXED: Safe amount formatting */}
+                          {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
+                        </Typography>
+                      </Box>
+                    }
+                    secondary={
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                          <Chip 
+                            label={transaction.category} 
+                            size="small" 
+                            variant="outlined"
+                            onClick={() => handleCategoryFilter(transaction.category)}
+                            sx={{ cursor: 'pointer' }}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(transaction.date).toLocaleDateString()}
                           </Typography>
-                        )}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {dayjs(transaction.date).format('MMM DD, YYYY')}
-                      </Typography>
-                    </Box>
-                    <motion.div
-                      animate={transaction.isOptimistic ? { scale: [1, 1.1, 1] } : {}}
-                      transition={{ duration: 1, repeat: transaction.isOptimistic ? Infinity : 0 }}
-                    >
-                      <Typography variant="body2" sx={{ 
-                        color: transaction.type === 'income' ? 'success.main' : 'error.main',
-                        fontWeight: 600 
-                      }}>
-                        {transaction.type === 'income' ? '+' : '-'}₹{transaction.amount.toLocaleString('en-IN')}
-                      </Typography>
-                    </motion.div>
-                  </Box>
-                </motion.div>
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={(e) => handleMenuClick(e, transaction)}
+                        >
+                          <MoreVert />
+                        </IconButton>
+                      </Box>
+                    }
+                  />
+                </ListItem>
               ))}
-            </AnimatePresence>
-          </Paper>
-        </AnimatedCard>
-      </SlideIn>
+            </List>
+          )}
+        </Box>
+      </Paper>
 
-      {/* Transaction Form */}
-      <TransactionForm 
-        open={openForm} 
-        onClose={() => setOpenForm(false)} 
-        onOptimisticSubmit={handleOptimisticCreate} 
-      />
+      {/* Context Menu */}
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleMenuClose}
+      >
+        <MenuItem onClick={() => {/* Handle view */}}>
+          <ListItemIcon><Visibility fontSize="small" /></ListItemIcon>
+          <ListItemText>View Details</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => {/* Handle edit */}}>
+          <ListItemIcon><Edit fontSize="small" /></ListItemIcon>
+          <ListItemText>Edit</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleDeleteTransaction} disabled={deleteLoading}>
+          <ListItemIcon>
+            {deleteLoading ? <CircularProgress size={20} /> : <Delete fontSize="small" />}
+          </ListItemIcon>
+          <ListItemText>Delete</ListItemText>
+        </MenuItem>
+      </Menu>
 
-      {/* Notification */}
+      {/* Notification Snackbar */}
       <Snackbar
         open={notification.open}
         autoHideDuration={4000}
-        onClose={() => setNotification({ ...notification, open: false })}
+        onClose={handleNotificationClose}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
       >
         <Alert 
-          onClose={() => setNotification({ ...notification, open: false })} 
-          severity={notification.severity} 
+          onClose={handleNotificationClose} 
+          severity={notification.severity}
           variant="filled"
+          sx={{ width: '100%' }}
         >
           {notification.message}
         </Alert>

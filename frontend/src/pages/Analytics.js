@@ -11,7 +11,6 @@ import {
   Alert,
   CircularProgress,
   TextField,
-  Divider,
   Container,
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -45,8 +44,21 @@ import {
 import dayjs from 'dayjs';
 import { fetchTransactions } from '../features/transactions/transactionSlice';
 
-// Currency formatter for rupees
-const formatCurrency = (value) => `₹${Math.abs(value || 0).toLocaleString('en-IN')}`;
+// ✅ FIXED: Safe currency formatter with proper null/undefined handling
+const formatCurrency = (value) => {
+  const safeAmount = typeof value === 'number' && !isNaN(value) ? value : 0;
+  return `₹${Math.abs(safeAmount).toLocaleString('en-IN')}`;
+};
+
+// ✅ FIXED: Safe amount parser
+const parseAmount = (amount) => {
+  if (typeof amount === 'number' && !isNaN(amount)) return amount;
+  if (typeof amount === 'string') {
+    const parsed = parseFloat(amount);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
 
 // Custom tooltip component for charts
 const CustomTooltip = ({ active, payload, label }) => {
@@ -135,7 +147,7 @@ const StatCard = ({ title, value, icon, color, subtitle, trend = null }) => {
 
 const AnalyticsPage = () => {
   const dispatch = useDispatch();
-  const { data: transactions, isLoading, error } = useSelector((state) => state.transactions);
+  const { data: transactions = [], isLoading, error } = useSelector((state) => state.transactions);
   
   const [dateRange, setDateRange] = useState({
     startDate: dayjs().subtract(30, 'day'),
@@ -144,7 +156,16 @@ const AnalyticsPage = () => {
 
   const [filteredData, setFilteredData] = useState({
     transactions: [],
-    statistics: {},
+    statistics: {
+      totalIncome: 0,
+      totalExpenses: 0,
+      totalSavings: 0,
+      averageExpenditure: 0,
+      transactionCount: 0,
+      avgDailySpending: 0,
+      highestExpense: 0,
+      highestIncome: 0,
+    },
     chartData: [],
     categoryData: [],
   });
@@ -200,9 +221,15 @@ const AnalyticsPage = () => {
   }, [transactions]);
 
   const analyzeTransactionData = () => {
-    // Calculate basic statistics
-    const stats = transactions.reduce((acc, transaction) => {
-      const amount = parseFloat(transaction.amount) || 0;
+    // ✅ FIXED: Safe transaction data processing with amount validation
+    const safeTransactions = transactions.map(t => ({
+      ...t,
+      amount: parseAmount(t.amount)
+    }));
+
+    // Calculate basic statistics with safe amount handling
+    const stats = safeTransactions.reduce((acc, transaction) => {
+      const amount = transaction.amount; // Already safe from parseAmount
       
       if (transaction.type === 'income') {
         acc.totalIncome += amount;
@@ -223,13 +250,13 @@ const AnalyticsPage = () => {
 
     // Calculate derived statistics
     stats.totalSavings = stats.totalIncome - stats.totalExpenses;
-    stats.averageExpenditure = stats.totalExpenses / (stats.transactionCount > 0 ? stats.transactionCount : 1);
+    stats.averageExpenditure = stats.transactionCount > 0 ? stats.totalExpenses / stats.transactionCount : 0;
     
     // Calculate average daily spending
-    const daysDiff = dateRange.endDate.diff(dateRange.startDate, 'day') + 1;
+    const daysDiff = Math.max(1, dateRange.endDate.diff(dateRange.startDate, 'day') + 1);
     stats.avgDailySpending = stats.totalExpenses / daysDiff;
 
-    // Prepare daily chart data
+    // Prepare daily chart data with safe amount handling
     const dailyData = {};
     
     // Initialize all days in range with 0 values
@@ -243,10 +270,10 @@ const AnalyticsPage = () => {
       };
     }
 
-    // Fill in actual transaction data
-    transactions.forEach(transaction => {
+    // Fill in actual transaction data with safe amounts
+    safeTransactions.forEach(transaction => {
       const date = dayjs(transaction.date).format('YYYY-MM-DD');
-      const amount = parseFloat(transaction.amount) || 0;
+      const amount = transaction.amount; // Already safe
       
       if (dailyData[date]) {
         if (transaction.type === 'income') {
@@ -262,12 +289,12 @@ const AnalyticsPage = () => {
       dayjs(a.date, 'MMM DD').valueOf() - dayjs(b.date, 'MMM DD').valueOf()
     );
 
-    // Prepare category data for pie chart
+    // Prepare category data for pie chart with safe amounts
     const categoryBreakdown = {};
-    transactions.forEach(transaction => {
+    safeTransactions.forEach(transaction => {
       if (transaction.type === 'expense') {
         const category = transaction.category || 'Other';
-        categoryBreakdown[category] = (categoryBreakdown[category] || 0) + (parseFloat(transaction.amount) || 0);
+        categoryBreakdown[category] = (categoryBreakdown[category] || 0) + transaction.amount;
       }
     });
 
@@ -280,7 +307,7 @@ const AnalyticsPage = () => {
       .sort((a, b) => b.value - a.value);
 
     setFilteredData({
-      transactions,
+      transactions: safeTransactions,
       statistics: stats,
       chartData,
       categoryData,
@@ -523,263 +550,246 @@ const AnalyticsPage = () => {
               </Grid>
             </Paper>
 
-            {/* ✅ UPDATED: All Three Charts in Same Row with Proper Alignment */}
-  <Grid container spacing={4} sx={{ mb: 4 }}> {/* ✅ INCREASED spacing from 3 to 4 for better gaps */}
-  {/* Daily Trend Line Chart - ✅ EQUAL WIDTH */}
-  <Grid item xs={12} xl={4} lg={12}> {/* ✅ xl={4} for equal width on large screens, lg={12} for stacking on medium */}
-    <Paper sx={{ 
-      p: 4, // ✅ INCREASED padding from 3 to 4
-      borderRadius: 4, 
-      height: 550, // ✅ INCREASED height from 500 to 550
-      boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-      border: '1px solid rgba(0,0,0,0.05)',
-      display: 'flex',
-      flexDirection: 'column'
-    }}>
-      <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-        <TrendingUp sx={{ mr: 1, color: 'success.main', fontSize: 22 }} />
-        Daily Income & Expense Trends
-      </Typography>
-      
-      {filteredData.chartData.length > 0 ? (
-        <Box sx={{ flexGrow: 1, minHeight: 0 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart 
-              data={filteredData.chartData} 
-              margin={{ top: 20, right: 30, left: 20, bottom: 60 }} // ✅ PROPER margins
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis 
-                dataKey="date" 
-                tick={{ fontSize: 11 }} // ✅ INCREASED font size
-                angle={-45}
-                textAnchor="end"
-                height={70}
-                interval="preserveStartEnd"
-              />
-              <YAxis 
-                tickFormatter={(value) => `₹${Math.abs(value / 1000).toFixed(0)}k`}
-                tick={{ fontSize: 11 }} // ✅ INCREASED font size
-                width={60} // ✅ INCREASED width
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend 
-                wrapperStyle={{ fontSize: '13px', paddingTop: '15px' }}
-                iconSize={14}
-              />
-              <Line
-                type="monotone"
-                dataKey="income"
-                stroke="#4CAF50"
-                strokeWidth={3} // ✅ INCREASED stroke width
-                dot={{ fill: '#4CAF50', r: 4 }}
-                activeDot={{ r: 6, stroke: '#4CAF50', strokeWidth: 2 }}
-                name="Income"
-              />
-              <Line
-                type="monotone"
-                dataKey="expenses"
-                stroke="#f44336"
-                strokeWidth={3} // ✅ INCREASED stroke width
-                dot={{ fill: '#f44336', r: 4 }}
-                activeDot={{ r: 6, stroke: '#f44336', strokeWidth: 2 }}
-                name="Expenses"
-              />
-              <Line
-                type="monotone"
-                dataKey="net"
-                stroke="#2196F3"
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                dot={{ fill: '#2196F3', r: 3 }}
-                activeDot={{ r: 5 }}
-                name="Net Flow"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </Box>
-      ) : (
-        <Box sx={{ 
-          flexGrow: 1, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          py: 6 // ✅ INCREASED padding
-        }}>
-          <TrendingUp sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-          <Typography variant="h6" color="text.secondary" gutterBottom>
-            No trend data available
-          </Typography>
-          <Typography variant="body2" color="text.secondary" textAlign="center">
-            Select a date range with transactions to view daily trends
-          </Typography>
-        </Box>
-      )}
-    </Paper>
-  </Grid>
+            {/* Charts Section - Adjusted for Sidebar Layout */}
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              {/* Daily Trend Line Chart */}
+              <Grid item xs={12} lg={4}>
+                <Paper sx={{ 
+                  p: 3, 
+                  borderRadius: 4, 
+                  height: 520,
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+                  border: '1px solid rgba(0,0,0,0.05)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minWidth: 0
+                }}>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                    <TrendingUp sx={{ mr: 1, color: 'success.main', fontSize: 20 }} />
+                    Daily Trends
+                  </Typography>
+                  
+                  {filteredData.chartData.length > 0 ? (
+                    <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart 
+                          data={filteredData.chartData} 
+                          margin={{ top: 15, right: 20, left: 15, bottom: 50 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                          <XAxis 
+                            dataKey="date" 
+                            tick={{ fontSize: 10 }}
+                            angle={-45}
+                            textAnchor="end"
+                            height={60}
+                            interval="preserveStartEnd"
+                          />
+                          <YAxis 
+                            tickFormatter={(value) => `₹${Math.abs(value / 1000).toFixed(0)}k`}
+                            tick={{ fontSize: 10 }}
+                            width={50}
+                          />
+                          <Tooltip content={<CustomTooltip />} />
+                          <Legend 
+                            wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }}
+                            iconSize={12}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="income"
+                            stroke="#4CAF50"
+                            strokeWidth={2}
+                            dot={{ fill: '#4CAF50', r: 3 }}
+                            activeDot={{ r: 5 }}
+                            name="Income"
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="expenses"
+                            stroke="#f44336"
+                            strokeWidth={2}
+                            dot={{ fill: '#f44336', r: 3 }}
+                            activeDot={{ r: 5 }}
+                            name="Expenses"
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="net"
+                            stroke="#2196F3"
+                            strokeWidth={2}
+                            strokeDasharray="5 5"
+                            dot={{ fill: '#2196F3', r: 2 }}
+                            activeDot={{ r: 4 }}
+                            name="Net"
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </Box>
+                  ) : (
+                    <Box sx={{ 
+                      flexGrow: 1, 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      py: 4
+                    }}>
+                      <TrendingUp sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                      <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+                        No trend data
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" textAlign="center">
+                        Select a date range with transactions
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
 
-  {/* Category Breakdown Pie Chart - ✅ EQUAL WIDTH */}
-  <Grid item xs={12} xl={4} lg={6}> {/* ✅ xl={4} for equal width, lg={6} for 2 columns on medium screens */}
-    <Paper sx={{ 
-      p: 4, // ✅ INCREASED padding
-      borderRadius: 4, 
-      height: 550, // ✅ MATCHED height
-      boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-      border: '1px solid rgba(0,0,0,0.05)',
-      display: 'flex',
-      flexDirection: 'column'
-    }}>
-      <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-        <Assessment sx={{ mr: 1, color: 'warning.main', fontSize: 22 }} />
-        Expense Categories Breakdown
-      </Typography>
-      
-      {filteredData.categoryData.length > 0 ? (
-        <Box sx={{ flexGrow: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-              <Pie
-                data={filteredData.categoryData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }) => 
-                  percent > 5 ? `${name.length > 10 ? name.substring(0, 10) + '...' : name}` : ''
-                } // ✅ IMPROVED label logic
-                outerRadius={140} // ✅ INCREASED radius for better visibility
-                innerRadius={60}   // ✅ INCREASED inner radius
-                fill="#8884d8"
-                dataKey="value"
-                stroke="#fff"
-                strokeWidth={3}
-              >
-                {filteredData.categoryData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip 
-                formatter={(value, name) => [formatCurrency(value), name]}
-                contentStyle={{ 
-                  backgroundColor: 'white', 
-                  border: '1px solid #ccc', 
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        </Box>
-      ) : (
-        <Box sx={{ 
-          flexGrow: 1, 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          py: 6
-        }}>
-          <Assessment sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-          <Typography variant="h6" color="text.secondary" gutterBottom>
-            No expense categories
-          </Typography>
-          <Typography variant="body2" color="text.secondary" textAlign="center">
-            No expense data available for the selected period
-          </Typography>
-        </Box>
-      )}
-    </Paper>
-  </Grid>
+              {/* Category Breakdown Pie Chart */}
+              <Grid item xs={12} lg={4}>
+                <Paper sx={{ 
+                  p: 3, 
+                  borderRadius: 4, 
+                  height: 520,
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+                  border: '1px solid rgba(0,0,0,0.05)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minWidth: 0
+                }}>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                    <Assessment sx={{ mr: 1, color: 'warning.main', fontSize: 20 }} />
+                    Categories
+                  </Typography>
+                  
+                  {filteredData.categoryData.length > 0 ? (
+                    <Box sx={{ flexGrow: 1, minHeight: 0, display: 'flex', alignItems: 'center' }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart margin={{ top: 15, right: 15, bottom: 15, left: 15 }}>
+                          <Pie
+                            data={filteredData.categoryData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, percent }) => 
+                              percent > 8 ? `${name.substring(0, 6)}...` : name
+                            }
+                            outerRadius={110}
+                            innerRadius={45}
+                            fill="#8884d8"
+                            dataKey="value"
+                            stroke="#fff"
+                            strokeWidth={2}
+                          >
+                            {filteredData.categoryData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            formatter={(value, name) => [formatCurrency(value), name]}
+                            contentStyle={{ 
+                              backgroundColor: 'white', 
+                              border: '1px solid #ccc', 
+                              borderRadius: '8px',
+                              fontSize: '12px'
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </Box>
+                  ) : (
+                    <Box sx={{ 
+                      flexGrow: 1, 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      py: 4
+                    }}>
+                      <Assessment sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                      <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+                        No categories
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" textAlign="center">
+                        No expense data available
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
 
-  {/* Summary Bar Chart - ✅ EQUAL WIDTH */}
-  <Grid item xs={12} xl={4} lg={6}> {/* ✅ xl={4} for equal width, lg={6} for 2 columns on medium screens */}
-    <Paper sx={{ 
-      p: 4, // ✅ INCREASED padding
-      borderRadius: 4, 
-      height: 550, // ✅ MATCHED height
-      boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-      border: '1px solid rgba(0,0,0,0.05)',
-      display: 'flex',
-      flexDirection: 'column'
-    }}>
-      <Typography variant="h6" sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-        <AnalyticsIcon sx={{ mr: 1, color: 'info.main', fontSize: 22 }} />
-        Financial Summary Overview
-      </Typography>
-      
-      <Box sx={{ flexGrow: 1, minHeight: 0 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart 
-            data={[
-              { 
-                name: 'Income', 
-                value: filteredData.statistics.totalIncome, 
-                fill: '#4CAF50',
-                label: `₹${(filteredData.statistics.totalIncome / 1000).toFixed(1)}k`
-              },
-              { 
-                name: 'Expenses', 
-                value: filteredData.statistics.totalExpenses, 
-                fill: '#f44336',
-                label: `₹${(filteredData.statistics.totalExpenses / 1000).toFixed(1)}k`
-              },
-              { 
-                name: 'Net Savings', 
-                value: Math.abs(filteredData.statistics.totalSavings), 
-                fill: filteredData.statistics.totalSavings >= 0 ? '#2196F3' : '#ff9800',
-                label: `₹${(Math.abs(filteredData.statistics.totalSavings) / 1000).toFixed(1)}k`
-              }
-            ]}
-            margin={{ top: 30, right: 30, left: 30, bottom: 60 }} // ✅ INCREASED margins
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis 
-              dataKey="name" 
-              tick={{ fontSize: 12, fontWeight: 600 }} // ✅ INCREASED font size and weight
-              angle={0} // ✅ STRAIGHT text for better readability
-              textAnchor="middle"
-              height={60}
-            />
-            <YAxis 
-              tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}k`}
-              tick={{ fontSize: 11 }}
-              width={70} // ✅ INCREASED width
-            />
-            <Tooltip 
-              formatter={(value, name) => [formatCurrency(value), name]}
-              contentStyle={{ 
-                backgroundColor: 'white', 
-                border: '1px solid #ccc', 
-                borderRadius: '8px',
-                fontSize: '13px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-              }}
-            />
-            <Bar 
-              dataKey="value" 
-              radius={[6, 6, 0, 0]} // ✅ INCREASED border radius
-              fill={(entry) => entry.fill}
-              stroke="rgba(255,255,255,0.3)"
-              strokeWidth={1}
-            >
-              {[
-                { name: 'Income', value: filteredData.statistics.totalIncome, fill: '#4CAF50' },
-                { name: 'Expenses', value: filteredData.statistics.totalExpenses, fill: '#f44336' },
-                { name: 'Savings', value: Math.abs(filteredData.statistics.totalSavings), fill: filteredData.statistics.totalSavings >= 0 ? '#2196F3' : '#ff9800' }
-              ].map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.fill} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </Box>
-    </Paper>
-  </Grid>
-</Grid>
+              {/* Summary Bar Chart */}
+              <Grid item xs={12} lg={4}>
+                <Paper sx={{ 
+                  p: 3, 
+                  borderRadius: 4, 
+                  height: 520,
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+                  border: '1px solid rgba(0,0,0,0.05)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minWidth: 0
+                }}>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                    <AnalyticsIcon sx={{ mr: 1, color: 'info.main', fontSize: 20 }} />
+                    Summary
+                  </Typography>
+                  
+                  <Box sx={{ flexGrow: 1, minHeight: 0 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart 
+                        data={[
+                          { name: 'Income', value: filteredData.statistics.totalIncome, fill: '#4CAF50' },
+                          { name: 'Expenses', value: filteredData.statistics.totalExpenses, fill: '#f44336' },
+                          { name: 'Savings', value: Math.abs(filteredData.statistics.totalSavings), fill: filteredData.statistics.totalSavings >= 0 ? '#2196F3' : '#ff9800' }
+                        ]}
+                        margin={{ top: 20, right: 15, left: 15, bottom: 50 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis 
+                          dataKey="name" 
+                          tick={{ fontSize: 10, fontWeight: 500 }}
+                          angle={-20}
+                          textAnchor="end"
+                          height={50}
+                        />
+                        <YAxis 
+                          tickFormatter={(value) => `₹${(value / 1000).toFixed(0)}k`}
+                          tick={{ fontSize: 10 }}
+                          width={45}
+                        />
+                        <Tooltip 
+                          formatter={(value, name) => [formatCurrency(value), name]}
+                          contentStyle={{ 
+                            backgroundColor: 'white', 
+                            border: '1px solid #ccc', 
+                            borderRadius: '8px',
+                            fontSize: '12px'
+                          }}
+                        />
+                        <Bar 
+                          dataKey="value" 
+                          radius={[4, 4, 0, 0]}
+                          fill={(entry) => entry.fill}
+                        >
+                          {[
+                            { name: 'Income', value: filteredData.statistics.totalIncome, fill: '#4CAF50' },
+                            { name: 'Expenses', value: filteredData.statistics.totalExpenses, fill: '#f44336' },
+                            { name: 'Savings', value: Math.abs(filteredData.statistics.totalSavings), fill: filteredData.statistics.totalSavings >= 0 ? '#2196F3' : '#ff9800' }
+                          ].map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </Paper>
+              </Grid>
+            </Grid>
 
-
-            {/* ✅ ADDED: Category Legend for Better Understanding */}
+            {/* Category Legend */}
             {filteredData.categoryData.length > 0 && (
               <Paper sx={{ 
                 p: 3, 
@@ -820,7 +830,7 @@ const AnalyticsPage = () => {
                             {category.name}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {formatCurrency(category.value)} ({((category.value / filteredData.statistics.totalExpenses) * 100).toFixed(1)}%)
+                            {formatCurrency(category.value)} ({filteredData.statistics.totalExpenses > 0 ? ((category.value / filteredData.statistics.totalExpenses) * 100).toFixed(1) : 0}%)
                           </Typography>
                         </Box>
                       </Box>
