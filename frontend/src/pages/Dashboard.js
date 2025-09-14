@@ -120,11 +120,11 @@ const parseTransactionDate = (dateInput) => {
 
 const Dashboard = () => {
   const dispatch = useDispatch();
-  
+
   // ✅ ALL HOOKS AT TOP LEVEL
   const { data: transactions = [], isLoading, error } = useSelector((state) => state.transactions);
   const { user } = useSelector((state) => state.auth);
-  
+
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [timeFilter, setTimeFilter] = useState('30'); // days
@@ -142,6 +142,10 @@ const Dashboard = () => {
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lastTransactionCount, setLastTransactionCount] = useState(0);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // ✅ Initial fetch
   useEffect(() => {
@@ -175,7 +179,7 @@ const Dashboard = () => {
     const handleTransactionUpdate = (event) => {
       console.log('📥 Dashboard: Received transaction update event', event.detail);
       setRefreshTrigger(prev => prev + 1);
-      
+
       if (event.detail && event.detail.message) {
         setNotification({
           open: true,
@@ -215,7 +219,7 @@ const Dashboard = () => {
     let filtered = [...transactions].map((t, index) => {
       // ✅ ROBUST DATE PARSING
       const normalizedDate = parseTransactionDate(t.date);
-      
+
       // ✅ ROBUST AMOUNT PARSING
       let normalizedAmount = 0;
       try {
@@ -254,12 +258,12 @@ const Dashboard = () => {
     // ✅ EMERGENCY FIX: Very lenient time filtering (increased buffer)
     const now = new Date();
     const timeFilterDays = parseInt(timeFilter);
-    
+
     // ✅ CRITICAL FIX: Add 2 days buffer and set to start of day
     const filterDate = new Date();
     filterDate.setDate(now.getDate() - timeFilterDays - 2); // Extra 2 days buffer
     filterDate.setHours(0, 0, 0, 0);
-    
+
     console.log(`🕒 Time filter setup (LENIENT):`, {
       timeFilterDays: timeFilterDays,
       actualDaysBack: timeFilterDays + 2,
@@ -271,7 +275,7 @@ const Dashboard = () => {
     filtered = filtered.filter((t, index) => {
       const transactionDate = t.date;
       const isInRange = transactionDate >= filterDate;
-      
+
       // Debug ALL transactions that might be filtered out
       if (!isInRange) {
         console.log(`❌ FILTERED OUT:`, {
@@ -282,7 +286,7 @@ const Dashboard = () => {
           daysDiff: Math.ceil((now - transactionDate) / (1000 * 60 * 60 * 24))
         });
       }
-      
+
       return isInRange;
     });
 
@@ -290,6 +294,10 @@ const Dashboard = () => {
 
     // ✅ CRITICAL FIX: Create copy before sorting
     const finalFiltered = [...filtered].sort((a, b) => b.date - a.date);
+
+    // Pagination: slice the filtered array for current page and itemsPerPage
+    const startIdx = (currentPage - 1) * itemsPerPage;
+    const paginatedTransactions = finalFiltered.slice(startIdx, startIdx + itemsPerPage);
 
     // ✅ Final detailed summary
     const summary = {
@@ -311,18 +319,42 @@ const Dashboard = () => {
 
     console.log('✅ FINAL FILTERED TRANSACTIONS:', summary);
 
-    return finalFiltered;
+    // Return paginated filtered transactions
+    return paginatedTransactions;
+  }, [transactions, selectedCategory, timeFilter, currentPage, itemsPerPage]);
+
+  // Calculate total pages for pagination controls
+  const totalFilteredCount = useMemo(() => {
+    if (!transactions || !Array.isArray(transactions)) return 0;
+
+    let filtered = [...transactions];
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(t => t.category === selectedCategory);
+    }
+    const now = new Date();
+    const timeFilterDays = parseInt(timeFilter);
+    const filterDate = new Date();
+    filterDate.setDate(now.getDate() - timeFilterDays - 2);
+    filterDate.setHours(0, 0, 0, 0);
+    filtered = filtered.filter(t => parseTransactionDate(t.date) >= filterDate);
+
+    return filtered.length;
   }, [transactions, selectedCategory, timeFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(totalFilteredCount / itemsPerPage));
 
   // ✅ EMERGENCY DEBUG: Log the filtering issue
   useEffect(() => {
     console.log('🔍 FILTERING DEBUG:', {
       totalTransactions: transactions.length,
       filteredTransactions: filteredTransactions.length,
+      totalFilteredCount,
+      currentPage,
+      itemsPerPage,
       missingCount: transactions.length - filteredTransactions.length,
       timeFilter: timeFilter,
       selectedCategory: selectedCategory,
-      
+
       // Show details of filtered out transactions
       filteredOutTransactions: transactions
         .filter(t => !filteredTransactions.some(ft => ft._id === t._id))
@@ -335,12 +367,11 @@ const Dashboard = () => {
           parsedDate: parseTransactionDate(t.date).toISOString().split('T')[0]
         }))
     });
-  }, [transactions, filteredTransactions, timeFilter, selectedCategory]);
+  }, [transactions, filteredTransactions, timeFilter, selectedCategory, filteredTransactions.length, totalFilteredCount, currentPage, itemsPerPage]);
 
   // ✅ ENHANCED: Statistics calculation with all transactions for stats
   useEffect(() => {
     const calculateStats = () => {
-      // ✅ EMERGENCY FIX: Use all transactions for statistics, not filtered ones
       const allNormalizedTransactions = [...transactions].map(t => ({
         ...t,
         amount: typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0,
@@ -373,7 +404,7 @@ const Dashboard = () => {
         totalIncome,
         totalExpenses,
         netBalance: totalIncome - totalExpenses,
-        transactionCount: allNormalizedTransactions.length, // ✅ Show all transactions count
+        transactionCount: allNormalizedTransactions.length,
         categoriesCount: categories.size,
         avgDailySpending: totalExpenses / days
       };
@@ -393,11 +424,10 @@ const Dashboard = () => {
         }, {})
       });
     };
-
     calculateStats();
   }, [transactions, timeFilter]); // ✅ Use transactions, not filteredTransactions
 
-  // ✅ Category data for pie chart (use filtered for visualization)
+  // Category data for pie chart (use filtered for visualization)
   const categoryData = useMemo(() => {
     const categoryBreakdown = {};
     
@@ -418,7 +448,7 @@ const Dashboard = () => {
       .slice(0, 6);
   }, [filteredTransactions]);
 
-  // ✅ Chart data for trends (use filtered for visualization)
+  // Chart data for trends (use filtered for visualization)
   const chartData = useMemo(() => {
     const last7Days = [];
     const now = new Date();
@@ -452,9 +482,10 @@ const Dashboard = () => {
     return last7Days;
   }, [filteredTransactions]);
 
-  // ✅ Event handlers
+  // Event handlers
   const handleCategoryFilter = useCallback((categoryName) => {
     setSelectedCategory(categoryName === selectedCategory ? 'all' : categoryName);
+    setCurrentPage(1); // Reset to first page on filter change
     setNotification({
       open: true,
       message: categoryName 
@@ -485,6 +516,9 @@ const Dashboard = () => {
         message: 'Transaction deleted successfully',
         severity: 'success'
       });
+
+      // After delete, reload first page since data changed
+      setCurrentPage(1);
     } catch (error) {
       setNotification({
         open: true,
@@ -495,7 +529,7 @@ const Dashboard = () => {
       setDeleteLoading(false);
       handleMenuClose();
     }
-  }, [selectedTransaction, dispatch]);
+  }, [selectedTransaction, dispatch, handleMenuClose]);
 
   const handleNotificationClose = useCallback(() => {
     setNotification(prev => ({ ...prev, open: false }));
@@ -510,6 +544,7 @@ const Dashboard = () => {
         message: `✅ Refreshed! Found ${transactions.length} transactions`,
         severity: 'success'
       });
+      setCurrentPage(1); // Reset page on refresh
     } catch (error) {
       setNotification({
         open: true,
@@ -519,7 +554,51 @@ const Dashboard = () => {
     }
   }, [dispatch, transactions.length]);
 
-  // ✅ Error state
+  // Pagination controls handlers
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (event) => {
+    setItemsPerPage(parseInt(event.target.value, 10));
+    setCurrentPage(1);
+  };
+
+  // Pagination styles for MUI Button pagination with border hover effect and light/dark mode compatibility
+  const paginationButtonSx = {
+    minWidth: 36,
+    minHeight: 36,
+    marginX: 0.5,
+    paddingX: 1.5,
+    border: theme => `1px solid ${theme.palette.mode === 'light' ? '#ccc' : '#555'}`,
+    color: theme => theme.palette.text.primary,
+    fontWeight: 600,
+    borderRadius: 1.5,
+    backgroundColor: 'transparent',
+    '&:hover': {
+      borderColor: theme => theme.palette.primary.main,
+      backgroundColor: 'transparent', // no background color change
+    },
+    '&.Mui-disabled': {
+      opacity: 0.5,
+      borderColor: theme => theme.palette.mode === 'light' ? '#eee' : '#333',
+    }
+  };
+
+  // Generate pagination page buttons, limiting max buttons for UX
+  const maxPageButtons = 5;
+  let startPage = Math.max(1, currentPage - Math.floor(maxPageButtons / 2));
+  let endPage = startPage + maxPageButtons - 1;
+  if (endPage > totalPages) {
+    endPage = totalPages;
+    startPage = Math.max(1, endPage - maxPageButtons + 1);
+  }
+  const pageButtons = [];
+  for (let i = startPage; i <= endPage; i++) {
+    pageButtons.push(i);
+  }
+
+  // Error state
   if (error) {
     return (
       <Box sx={{ p: 3 }}>
@@ -549,7 +628,7 @@ const Dashboard = () => {
             Here's your financial overview for the selected period
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-            Last updated: {new Date().toLocaleTimeString()} • {transactions.length} total • {filteredTransactions.length} in period
+            Last updated: {new Date().toLocaleTimeString()} • {transactions.length} total • {totalFilteredCount} in period
           </Typography>
         </Box>
         
@@ -558,7 +637,7 @@ const Dashboard = () => {
             <InputLabel>Time Period</InputLabel>
             <Select
               value={timeFilter}
-              onChange={(e) => setTimeFilter(e.target.value)}
+              onChange={(e) => { setTimeFilter(e.target.value); setCurrentPage(1); }}
               label="Time Period"
             >
               <MenuItem value="7">Last 7 days</MenuItem>
@@ -735,8 +814,8 @@ const Dashboard = () => {
         mb: 4,
         px: 3
       }}>
+        {/* Weekly Trend Chart */}
         <Grid container spacing={4} sx={{ width: '100%' }}>
-          {/* Weekly Trend Chart */}
           <Grid item xs={12} lg={8}>
             <Paper sx={{ 
               p: 4, 
@@ -948,11 +1027,11 @@ const Dashboard = () => {
         </Grid>
       </Box>
 
-      {/* ✅ CRITICAL FIX: Recent Transactions - Show ALL transactions without filtering */}
+      {/* ✅ CRITICAL FIX: Recent Transactions - Paginated and filtered */}
       <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
         <Box sx={{ p: 3, bgcolor: 'primary.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Recent Transactions ({transactions.length} total)
+            Recent Transactions ({totalFilteredCount} total, page {currentPage} of {totalPages})
           </Typography>
           <IconButton 
             onClick={loadExpenses} 
@@ -964,7 +1043,7 @@ const Dashboard = () => {
         </Box>
         
         <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
-          {transactions.length === 0 ? (
+          {totalFilteredCount === 0 ? (
             <Box sx={{ textAlign: 'center', py: 8 }}>
               <Receipt sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" gutterBottom>
@@ -973,111 +1052,188 @@ const Dashboard = () => {
             </Box>
           ) : (
             <List>
-              {/* ✅ CRITICAL FIX: Create a new array before sorting to avoid read-only error */}
-              {[...transactions] // ✅ Create copy to avoid read-only error
-                .sort((a, b) => {
-                  const dateA = parseTransactionDate(a.date);
-                  const dateB = parseTransactionDate(b.date);
-                  return dateB - dateA; // Newest first
-                })
-                .slice(0, 15) // Show latest 15 transactions
-                .map((transaction, index) => {
-                  // Safe date parsing
-                  let displayDate;
-                  try {
-                    displayDate = parseTransactionDate(transaction.date).toLocaleDateString();
-                  } catch {
-                    displayDate = 'Invalid Date';
-                  }
-                  
-                  // Safe amount parsing
-                  let displayAmount = 0;
-                  try {
-                    displayAmount = typeof transaction.amount === 'number' 
-                      ? transaction.amount 
-                      : parseFloat(transaction.amount) || 0;
-                  } catch {
-                    displayAmount = 0;
-                  }
+              {filteredTransactions.map((transaction, index) => {
+                // Safe date parsing
+                let displayDate;
+                try {
+                  displayDate = parseTransactionDate(transaction.date).toLocaleDateString();
+                } catch {
+                  displayDate = 'Invalid Date';
+                }
+                
+                // Safe amount parsing
+                let displayAmount = 0;
+                try {
+                  displayAmount = typeof transaction.amount === 'number' 
+                    ? transaction.amount 
+                    : parseFloat(transaction.amount) || 0;
+                } catch {
+                  displayAmount = 0;
+                }
 
-                  return (
-                    <ListItem 
-                      key={transaction._id || index}
-                      sx={{ 
-                        borderBottom: '1px solid #f0f0f0',
-                        '&:hover': { bgcolor: 'grey.50' },
-                        backgroundColor: transaction.source === 'receipt_upload' ? '#f0fff0' : 
-                                         transaction.source === 'bank_statement' ? '#f0f0ff' : 'transparent'
-                      }}
-                    >
-                      <ListItemIcon>
-                        <Avatar sx={{ 
-                          bgcolor: transaction.type === 'income' ? 'success.main' : 'error.main',
-                          width: 40,
-                          height: 40
-                        }}>
-                          {transaction.type === 'income' ? <TrendingUp /> : <TrendingDown />}
-                        </Avatar>
-                      </ListItemIcon>
-                      
-                      <ListItemText
-                        primary={
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                              {transaction.description || transaction.category || 'Unknown Transaction'}
+                return (
+                  <ListItem 
+                    key={transaction._id || index}
+                    sx={{ 
+                      borderBottom: '1px solid #f0f0f0',
+                      '&:hover': { borderColor: 'primary.main' },
+                      backgroundColor: transaction.source === 'receipt_upload' ? '#f0fff0' : 
+                                      transaction.source === 'bank_statement' ? '#f0f0ff' : 'transparent',
+                      borderLeft: '4px solid transparent',
+                      '&:hover': {
+                        borderLeftColor: (theme) => theme.palette.primary.main,
+                        backgroundColor: 'transparent', // No bg color change on hover
+                      }
+                    }}
+                  >
+                    <ListItemIcon>
+                      <Avatar sx={{ 
+                        bgcolor: transaction.type === 'income' ? 'success.main' : 'error.main',
+                        width: 40,
+                        height: 40
+                      }}>
+                        {transaction.type === 'income' ? <TrendingUp /> : <TrendingDown />}
+                      </Avatar>
+                    </ListItemIcon>
+                    
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                            {transaction.description || transaction.category || 'Unknown Transaction'}
+                          </Typography>
+                          <Typography 
+                            variant="h6" 
+                            sx={{ 
+                              fontWeight: 700,
+                              color: transaction.type === 'income' ? 'success.main' : 'error.main'
+                            }}
+                          >
+                            {transaction.type === 'income' ? '+' : '-'}{formatCurrency(displayAmount)}
+                          </Typography>
+                        </Box>
+                      }
+                      secondary={
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                            <Chip 
+                              label={transaction.category || 'Other'} 
+                              size="small" 
+                              variant="outlined"
+                              sx={{ cursor: 'pointer' }}
+                            />
+                            <Typography variant="caption" color="text.secondary">
+                              {displayDate}
                             </Typography>
-                            <Typography 
-                              variant="h6" 
-                              sx={{ 
-                                fontWeight: 700,
-                                color: transaction.type === 'income' ? 'success.main' : 'error.main'
-                              }}
-                            >
-                              {transaction.type === 'income' ? '+' : '-'}{formatCurrency(displayAmount)}
-                            </Typography>
-                          </Box>
-                        }
-                        secondary={
-                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                              <Chip 
-                                label={transaction.category || 'Other'} 
-                                size="small" 
-                                variant="outlined"
-                                sx={{ cursor: 'pointer' }}
-                              />
-                              <Typography variant="caption" color="text.secondary">
-                                {displayDate}
-                              </Typography>
-                              {/* ✅ SOURCE INDICATOR */}
-                              <Chip 
-                                label={transaction.source || 'manual'}
-                                size="small"
-                                variant="filled"
-                                sx={{ 
-                                  fontSize: '0.65rem',
-                                  height: '20px',
-                                  bgcolor: transaction.source === 'receipt_upload' ? '#4caf50' : 
-                                           transaction.source === 'bank_statement' ? '#2196f3' : '#757575',
-                                  color: 'white',
-                                  fontWeight: 'bold'
-                                }}
-                              />
-                            </Box>
-                            <IconButton
+                            {/* ✅ SOURCE INDICATOR */}
+                            <Chip 
+                              label={transaction.source || 'manual'}
                               size="small"
-                              onClick={(e) => handleMenuClick(e, transaction)}
-                            >
-                              <MoreVert />
-                            </IconButton>
+                              variant="filled"
+                              sx={{ 
+                                fontSize: '0.65rem',
+                                height: '20px',
+                                bgcolor: transaction.source === 'receipt_upload' ? '#4caf50' : 
+                                       transaction.source === 'bank_statement' ? '#2196f3' : '#757575',
+                                color: 'white',
+                                fontWeight: 'bold'
+                              }}
+                            />
                           </Box>
-                        }
-                      />
-                    </ListItem>
-                  );
-                })}
+                          <IconButton
+                            size="small"
+                            onClick={(e) => handleMenuClick(e, transaction)}
+                          >
+                            <MoreVert />
+                          </IconButton>
+                        </Box>
+                      }
+                    />
+                  </ListItem>
+                );
+              })}
             </List>
           )}
+        </Box>
+
+        {/* Pagination Controls */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, borderTop: '1px solid #e0e0e0' }}>
+          {/* Items per page selector */}
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel id="items-per-page-label">Items per page</InputLabel>
+            <Select
+              labelId="items-per-page-label"
+              id="items-per-page-select"
+              value={itemsPerPage}
+              label="Items per page"
+              onChange={handleItemsPerPageChange}
+              sx={{ width: 120 }}
+            >
+              {[5, 10, 15, 25, 50].map((num) => (
+                <MenuItem key={num} value={num}>{num}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {/* Page navigation buttons */}
+          <Box>
+            <Button
+              onClick={() => handlePageChange(1)}
+              disabled={currentPage === 1}
+              sx={paginationButtonSx}
+              aria-label="First page"
+            >
+              {'<<'}
+            </Button>
+            <Button
+              onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              sx={paginationButtonSx}
+              aria-label="Previous page"
+            >
+              {'<'}
+            </Button>
+            {startPage > 1 && <Button sx={paginationButtonSx} disabled>...</Button>}
+            {pageButtons.map(page => (
+              <Button
+                key={page}
+                onClick={() => handlePageChange(page)}
+                variant={page === currentPage ? 'contained' : 'outlined'}
+                sx={{
+                  ...paginationButtonSx,
+                  ...(page === currentPage ? {
+                    borderColor: (theme) => theme.palette.primary.main,
+                    color: 'primary.contrastText',
+                    backgroundColor: (theme) => theme.palette.primary.main,
+                    '&:hover': {
+                      backgroundColor: (theme) => theme.palette.primary.dark,
+                      borderColor: (theme) => theme.palette.primary.dark,
+                    }
+                  } : {})
+                }}
+                aria-current={page === currentPage ? 'page' : undefined}
+              >
+                {page}
+              </Button>
+            ))}
+            {endPage < totalPages && <Button sx={paginationButtonSx} disabled>...</Button>}
+            <Button
+              onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              sx={paginationButtonSx}
+              aria-label="Next page"
+            >
+              {'>'}
+            </Button>
+            <Button
+              onClick={() => handlePageChange(totalPages)}
+              disabled={currentPage === totalPages}
+              sx={paginationButtonSx}
+              aria-label="Last page"
+            >
+              {'>>'}
+            </Button>
+          </Box>
         </Box>
       </Paper>
 

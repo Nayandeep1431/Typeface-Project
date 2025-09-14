@@ -8,12 +8,16 @@ const rateLimit = require('express-rate-limit');
 const cloudinary = require('cloudinary').v2;
 require('dotenv').config();
 
-// Environment variables validation and setup
+// -----------------------------------------------------------------------------
+// Environment Setup and Validation
+// -----------------------------------------------------------------------------
+
+// Default to 'development' if NODE_ENV not set
 if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = 'development';
 }
 
-// Validate required environment variables
+// Check for required environment variables
 const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET'];
 const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
 
@@ -23,6 +27,7 @@ if (missingEnvVars.length > 0) {
   process.exit(1);
 }
 
+// Log essential environment details for verification
 console.log('🔍 Environment Check:');
 console.log('✅ NODE_ENV:', process.env.NODE_ENV);
 console.log('✅ PORT:', process.env.PORT || 5000);
@@ -32,7 +37,10 @@ console.log('✅ Cloudinary:', process.env.CLOUDINARY_CLOUD_NAME ? 'Configured' 
 console.log('✅ Gemini API:', process.env.GEMINI_API_KEY ? 'Set' : '❌ Missing');
 console.log('---');
 
-// Import routes
+// -----------------------------------------------------------------------------
+// Import Routes with Fallbacks
+// -----------------------------------------------------------------------------
+
 let authRoutes, transactionRoutes, uploadRoutes, expenseRoutes;
 
 try {
@@ -80,68 +88,75 @@ try {
   });
 }
 
+// -----------------------------------------------------------------------------
+// Initialize Express Application
+// -----------------------------------------------------------------------------
+
 const app = express();
 
-// Security middleware
+// -----------------------------------------------------------------------------
+// Middleware Setup
+// -----------------------------------------------------------------------------
+
+// Security HTTP headers
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// Response compression for better performance
 app.use(compression());
 
-// Rate limiting
+// Rate limiting middleware for API routes excluding uploads POSTs
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 200,
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes default
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 200, // 200 requests max
   message: {
     error: 'Too many requests from this IP, please try again later.'
   },
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => {
+    // Skip rate limiting for POST requests to upload routes (file uploads)
     return req.path.includes('/upload') && req.method === 'POST';
   }
 });
 app.use('/api/', limiter);
 
-// CORS configuration
+// CORS configuration allowing origins based on environment
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.com']
-    : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'],
+    ? ['https://your-frontend-domain.com'] // Set to production frontend URL
+    : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'], // Local dev URLs
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: ['Content-Range', 'X-Content-Range']
 }));
 
-// CRITICAL: Remove the problematic middleware that interferes with file uploads
-// DO NOT USE express.raw for upload routes - let multer handle it
-// app.use('/api/upload', express.raw({ type: 'multipart/form-data', limit: '10mb' }));
-
-// Body parsing middleware - FIXED: Apply to non-upload routes only
+// CRITICAL: Skip express.json and urlencoded for upload routes to avoid file parsing issues
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/upload')) {
-    // Skip JSON parsing for upload routes - let multer handle the raw data
-    return next();
+    return next(); // Multer will handle upload routes
   }
-  // Apply JSON parsing to all other routes
   express.json({ limit: '10mb' })(req, res, next);
 });
 
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/upload')) {
-    // Skip URL encoding for upload routes
-    return next();
+    return next(); // Multer handles urlencoded too for upload routes
   }
   express.urlencoded({ extended: true, limit: '10mb' })(req, res, next);
 });
 
-// Logging middleware
+// HTTP request logging in development only
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
-// Database connection
+// -----------------------------------------------------------------------------
+// Database Connection
+// -----------------------------------------------------------------------------
+
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
@@ -155,7 +170,10 @@ mongoose.connect(process.env.MONGODB_URI, {
   process.exit(1);
 });
 
-// Cloudinary connection
+// -----------------------------------------------------------------------------
+// Cloudinary Configuration and Connectivity Check
+// -----------------------------------------------------------------------------
+
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -176,7 +194,10 @@ if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && proce
   console.error("❌ Cloudinary credentials missing");
 }
 
-// Request logging for debugging uploads
+// -----------------------------------------------------------------------------
+// Request Logging for Uploads
+// -----------------------------------------------------------------------------
+
 app.use((req, res, next) => {
   if (req.path.includes('/upload')) {
     console.log(`📤 ${req.method} ${req.path}`);
@@ -187,11 +208,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Routes - CRITICAL: Order matters
+// -----------------------------------------------------------------------------
+// Routes - Order is important!
+// -----------------------------------------------------------------------------
+
 console.log('🔗 Setting up routes...');
 app.use('/api/auth', authRoutes);
 app.use('/api/transactions', transactionRoutes);
-app.use('/api/upload', uploadRoutes); // Multer handles multipart data here
+app.use('/api/upload', uploadRoutes); // Multer handles multipart uploads here
 app.use('/api/expenses', expenseRoutes);
 
 console.log('✅ Routes configured:');
@@ -201,7 +225,10 @@ console.log('   📍 /api/upload/receipt (Receipt upload)');
 console.log('   📍 /api/upload/bank-statement (Bank statement upload)');
 console.log('   📍 /api/expenses/* (Expenses CRUD)');
 
-// Health check endpoint
+// -----------------------------------------------------------------------------
+// Health Check Endpoint
+// -----------------------------------------------------------------------------
+
 app.get('/api/health', (req, res) => {
   const health = {
     status: 'OK',
@@ -219,7 +246,10 @@ app.get('/api/health', (req, res) => {
   res.json(health);
 });
 
-// API documentation endpoint
+// -----------------------------------------------------------------------------
+// API Documentation Endpoint
+// -----------------------------------------------------------------------------
+
 app.get('/api', (req, res) => {
   res.json({
     message: 'Finance Tracker API',
@@ -236,7 +266,10 @@ app.get('/api', (req, res) => {
   });
 });
 
-// Test endpoint for upload functionality
+// -----------------------------------------------------------------------------
+// Upload Test Endpoint
+// -----------------------------------------------------------------------------
+
 app.get('/api/upload/test', (req, res) => {
   res.json({
     message: 'Upload routes are working',
@@ -256,7 +289,10 @@ app.get('/api/upload/test', (req, res) => {
   });
 });
 
-// 404 handler
+// -----------------------------------------------------------------------------
+// 404 Handler - Catch-all for undefined routes
+// -----------------------------------------------------------------------------
+
 app.use('*', (req, res) => {
   console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
   res.status(404).json({
@@ -267,26 +303,29 @@ app.use('*', (req, res) => {
   });
 });
 
-// Enhanced global error handler
+// -----------------------------------------------------------------------------
+// Global Error Handler - Centralized error processing
+// -----------------------------------------------------------------------------
+
 app.use((error, req, res, next) => {
   console.error('🚨 Global Error:', error);
-  
-  // Handle multer errors specifically
+
+  // Specific multer errors handling
   if (error.code === 'LIMIT_FILE_SIZE') {
     return res.status(400).json({
       success: false,
       error: 'File too large. Maximum size is 10MB.'
     });
   }
-  
+
   if (error.code === 'LIMIT_UNEXPECTED_FILE') {
     return res.status(400).json({
       success: false,
       error: 'Unexpected file field. Use "file" as the field name.'
     });
   }
-  
-  // Handle busboy/multipart errors
+
+  // Busboy/multipart errors
   if (error.message && error.message.includes('Unexpected end of form')) {
     return res.status(400).json({
       success: false,
@@ -294,7 +333,7 @@ app.use((error, req, res, next) => {
       details: 'The multipart form data was not properly received.'
     });
   }
-  
+
   if (error.message && error.message.includes('Missing boundary')) {
     return res.status(400).json({
       success: false,
@@ -302,8 +341,8 @@ app.use((error, req, res, next) => {
       details: 'Content-Type boundary is missing or invalid.'
     });
   }
-  
-  // Handle specific error types
+
+  // Mongoose validation errors
   if (error.name === 'ValidationError') {
     return res.status(400).json({
       success: false,
@@ -311,14 +350,16 @@ app.use((error, req, res, next) => {
       details: Object.values(error.errors).map(e => e.message)
     });
   }
-  
+
+  // Cast errors for invalid IDs
   if (error.name === 'CastError') {
     return res.status(400).json({
       success: false,
       error: 'Invalid ID format'
     });
   }
-  
+
+  // Duplicate key error (Mongo 11000)
   if (error.code === 11000) {
     return res.status(400).json({
       success: false,
@@ -326,7 +367,7 @@ app.use((error, req, res, next) => {
     });
   }
 
-  // Handle authentication errors
+  // JWT/authentication errors
   if (error.name === 'UnauthorizedError' || error.name === 'JsonWebTokenError') {
     return res.status(401).json({
       success: false,
@@ -334,7 +375,7 @@ app.use((error, req, res, next) => {
     });
   }
 
-  // Generic error response
+  // Generic fallback error handler
   res.status(error.status || 500).json({
     success: false,
     message: error.message || 'Internal server error',
@@ -345,6 +386,10 @@ app.use((error, req, res, next) => {
     })
   });
 });
+
+// -----------------------------------------------------------------------------
+// Server Startup and Graceful Shutdown
+// -----------------------------------------------------------------------------
 
 const PORT = process.env.PORT || 5000;
 
@@ -358,7 +403,7 @@ const server = app.listen(PORT, () => {
   console.log('🎉 ===================================');
 });
 
-// Graceful shutdown handling
+// Graceful shutdown handling for SIGTERM (e.g., Docker stop)
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
   server.close(() => {
@@ -370,6 +415,7 @@ process.on('SIGTERM', () => {
   });
 });
 
+// Handle unhandled promise rejections to avoid silent crashes
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled Promise Rejection:', err);
   server.close(() => {

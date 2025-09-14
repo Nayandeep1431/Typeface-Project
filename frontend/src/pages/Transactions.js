@@ -13,13 +13,11 @@ import {
   TableRow,
   Chip,
   IconButton,
-  TextField,
   MenuItem,
   Grid,
   Card,
   CardContent,
   Pagination,
-  InputAdornment,
   FormControl,
   InputLabel,
   Select,
@@ -30,8 +28,6 @@ import {
   ListItemIcon,
   ListItemText,
   Tooltip,
-  Switch,
-  FormControlLabel,
   Divider,
   Dialog,
   DialogTitle,
@@ -44,24 +40,14 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  Search as SearchIcon,
-  FilterList as FilterIcon,
   TrendingUp,
   TrendingDown,
   CalendarToday,
   MoreVert as MoreIcon,
   Visibility as ViewIcon,
-  Clear as ClearIcon,
-  TableChart as TableIcon,
-  ViewModule as CardIcon,
-  Menu as MenuIcon,
+  Close as CloseIcon,
   Warning as WarningIcon,
   Save as SaveIcon,
-  Close as CloseIcon,
-  FirstPage,
-  LastPage,
-  KeyboardArrowLeft,
-  KeyboardArrowRight,
 } from '@mui/icons-material';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -88,7 +74,7 @@ import {
   AnimatedListItem,
 } from '../components/Animations/AnimatedComponents';
 
-
+// Date range presets definition added to fix eslint error
 const dateRangePresets = [
   { label: 'Today', getValue: () => ({ start: dayjs().startOf('day'), end: dayjs().endOf('day') }) },
   { label: 'This Week', getValue: () => ({ start: dayjs().startOf('week'), end: dayjs().endOf('week') }) },
@@ -98,38 +84,16 @@ const dateRangePresets = [
   { label: 'This Year', getValue: () => ({ start: dayjs().startOf('year'), end: dayjs().endOf('year') }) },
 ];
 
-
-const categories = [
-  'Food & Dining',
-  'Transportation',
-  'Shopping',
-  'Entertainment',
-  'Bills & Utilities',
-  'Healthcare',
-  'Education',
-  'Travel',
-  'Rent',
-  'Insurance',
-  'Salary',
-  'Freelance',
-  'Investment',
-  'Business Income',
-  'Other',
-];
-
-
-// ✅ Date validation helper
+// Date validation helper
 const isFutureDate = (date) => {
   const today = dayjs().startOf('day');
   const compareDate = dayjs(date).startOf('day');
   return compareDate.isAfter(today);
 };
 
-
-// ✅ Date Fix Dialog Component
+// DateFixDialog component
 const DateFixDialog = ({ open, onClose, transaction, onSave, isLoading }) => {
   const [newDate, setNewDate] = useState(null);
-
 
   useEffect(() => {
     if (transaction && open) {
@@ -137,14 +101,12 @@ const DateFixDialog = ({ open, onClose, transaction, onSave, isLoading }) => {
     }
   }, [transaction, open]);
 
-
   const handleSave = async () => {
     if (newDate && transaction) {
       await onSave(transaction._id, newDate.toISOString());
       onClose();
     }
   };
-
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -158,11 +120,11 @@ const DateFixDialog = ({ open, onClose, transaction, onSave, isLoading }) => {
             <AlertTitle>Future Date Detected</AlertTitle>
             This transaction has a future date which may indicate a parsing error. Please verify and correct the date below.
           </Alert>
-          
+
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Current Date: {transaction && dayjs(transaction.date).format('MMMM DD, YYYY hh:mm A')}
           </Typography>
-          
+
           <DatePicker
             label="Corrected Date"
             value={newDate}
@@ -181,9 +143,9 @@ const DateFixDialog = ({ open, onClose, transaction, onSave, isLoading }) => {
         <Button onClick={onClose} disabled={isLoading}>
           Cancel
         </Button>
-        <Button 
-          onClick={handleSave} 
-          variant="contained" 
+        <Button
+          onClick={handleSave}
+          variant="contained"
           disabled={!newDate || isLoading}
           startIcon={isLoading ? <CircularProgress size={16} /> : <SaveIcon />}
         >
@@ -194,15 +156,14 @@ const DateFixDialog = ({ open, onClose, transaction, onSave, isLoading }) => {
   );
 };
 
-
-// ✅ ENHANCED PROFESSIONAL PAGINATION COMPONENT
-const EnhancedPagination = ({ 
-  currentPage, 
-  totalPages, 
-  onPageChange, 
-  itemsPerPage = 10, 
-  totalItems = 0, 
-  showInfo = true 
+// EnhancedPagination component
+const EnhancedPagination = ({
+  currentPage,
+  totalPages,
+  onPageChange,
+  itemsPerPage = 10,
+  totalItems = 0,
+  showInfo = true,
 }) => {
   if (totalPages <= 1) return null;
 
@@ -210,41 +171,47 @@ const EnhancedPagination = ({
   const endItem = Math.min(currentPage * itemsPerPage, totalItems);
 
   return (
-    <Box 
-      sx={{ 
-        display: 'flex', 
+    <Box
+      sx={{
+        display: 'flex',
         flexDirection: { xs: 'column', sm: 'row' },
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
+        justifyContent: 'space-between',
+        alignItems: 'center',
         gap: 2,
         mt: 4,
         py: 3,
         px: 2,
         borderRadius: 3,
         backgroundColor: 'background.paper',
-        boxShadow: (theme) => theme.palette.mode === 'dark' 
-          ? '0 4px 20px rgba(0,0,0,0.3)' 
-          : '0 4px 20px rgba(0,0,0,0.08)',
+        boxShadow: (theme) =>
+          theme.palette.mode === 'dark' ? '0 4px 20px rgba(0,0,0,0.3)' : '0 4px 20px rgba(0,0,0,0.08)',
         border: '1px solid',
         borderColor: 'divider',
       }}
     >
       {/* Pagination Info */}
       {showInfo && (
-        <Typography 
-          variant="body2" 
+        <Typography
+          variant="body2"
           color="text.secondary"
-          sx={{ 
+          sx={{
             fontWeight: 500,
-            order: { xs: 2, sm: 1 }
+            order: { xs: 2, sm: 1 },
           }}
         >
-          Showing <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>{startItem}</Box>
-          {' '}-{' '}
-          <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>{endItem}</Box>
-          {' '}of{' '}
-          <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>{totalItems}</Box>
-          {' '}transactions
+          Showing{' '}
+          <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>
+            {startItem}
+          </Box>{' '}
+          -{' '}
+          <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>
+            {endItem}
+          </Box>{' '}
+          of{' '}
+          <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>
+            {totalItems}
+          </Box>{' '}
+          transactions
         </Typography>
       )}
 
@@ -270,95 +237,80 @@ const EnhancedPagination = ({
             borderRadius: 2,
             border: '2px solid transparent',
             transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-            
-            // Light mode colors
+
             color: 'text.primary',
             backgroundColor: 'transparent',
-            
+
             '&:hover': {
               backgroundColor: 'transparent',
               borderColor: 'primary.main',
               transform: 'translateY(-1px)',
-              boxShadow: (theme) => theme.palette.mode === 'dark'
-                ? '0 4px 12px rgba(25, 118, 210, 0.25)'
-                : '0 4px 12px rgba(25, 118, 210, 0.15)',
+              boxShadow:
+                '0 4px 12px rgba(25, 118, 210, 0.15)',
             },
-            
+
             '&.Mui-selected': {
               backgroundColor: 'primary.main',
               color: 'primary.contrastText',
               borderColor: 'primary.main',
               fontWeight: 600,
-              boxShadow: (theme) => theme.palette.mode === 'dark'
-                ? '0 4px 16px rgba(25, 118, 210, 0.4)'
-                : '0 4px 16px rgba(25, 118, 210, 0.25)',
-              
+              boxShadow: '0 4px 16px rgba(25, 118, 210, 0.25)',
+
               '&:hover': {
                 backgroundColor: 'primary.dark',
                 borderColor: 'primary.dark',
                 transform: 'translateY(-1px)',
-              }
+              },
             },
-            
+
             '&.Mui-disabled': {
               opacity: 0.4,
               color: 'text.disabled',
               backgroundColor: 'transparent',
               borderColor: 'transparent',
-              
+
               '&:hover': {
                 backgroundColor: 'transparent',
                 borderColor: 'transparent',
                 transform: 'none',
                 boxShadow: 'none',
-              }
-            }
+              },
+            },
           },
-          
+
           '& .MuiPaginationItem-ellipsis': {
             color: 'text.secondary',
             fontSize: '1.1rem',
           },
-          
+
           '& .MuiPaginationItem-icon': {
             fontSize: '1.2rem',
           },
-          
-          // Special styling for first/last/prev/next buttons
+
           '& .MuiPaginationItem-previousNext': {
             '&:hover': {
               borderColor: 'secondary.main',
-              boxShadow: (theme) => theme.palette.mode === 'dark'
-                ? '0 4px 12px rgba(156, 39, 176, 0.25)'
-                : '0 4px 12px rgba(156, 39, 176, 0.15)',
-            }
+              boxShadow: '0 4px 12px rgba(156, 39, 176, 0.15)',
+            },
           },
-          
+
           '& .MuiPaginationItem-firstLast': {
             '&:hover': {
               borderColor: 'secondary.main',
-              boxShadow: (theme) => theme.palette.mode === 'dark'
-                ? '0 4px 12px rgba(156, 39, 176, 0.25)'
-                : '0 4px 12px rgba(156, 39, 176, 0.15)',
-            }
-          }
+              boxShadow: '0 4px 12px rgba(156, 39, 176, 0.15)',
+            },
+          },
         }}
       />
     </Box>
   );
 };
 
-
 const Transactions = () => {
   const dispatch = useDispatch();
-  const {
-    data: transactions,
-    pagination,
-    isLoading,
-    error,
-    filters,
-  } = useSelector((state) => state.transactions);
-
+  const { data: transactions, pagination, isLoading, error, filters } = useSelector(
+    (state) => state.transactions
+  );
 
   const [openForm, setOpenForm] = useState(false);
   const [editTransaction, setEditTransaction] = useState(null);
@@ -367,28 +319,20 @@ const Transactions = () => {
   const [actionMenu, setActionMenu] = useState({ anchorEl: null, transaction: null });
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'card'
   const [localFilters, setLocalFilters] = useState(filters);
-  
-  // ✅ Date fix dialog state
+
   const [dateFixDialog, setDateFixDialog] = useState({ open: false, transaction: null });
   const [dateFixLoading, setDateFixLoading] = useState(false);
   const [showFutureDateAlert, setShowFutureDateAlert] = useState(true);
 
-
-  // ✅ Calculate future date transactions
-  const futureDateTransactions = transactions.filter(transaction => 
-    isFutureDate(transaction.date)
-  );
-
+  const futureDateTransactions = transactions.filter((transaction) => isFutureDate(transaction.date));
 
   useEffect(() => {
     applyFilters();
   }, [dispatch, filters]);
 
-
   useEffect(() => {
     setLocalFilters(filters);
   }, [filters]);
-
 
   const applyFilters = () => {
     const params = {
@@ -400,17 +344,14 @@ const Transactions = () => {
       ...(filters.endDate && { endDate: filters.endDate.toISOString() }),
     };
 
-
     dispatch(fetchTransactions(params));
   };
-
 
   const handleFilterChange = (field, value) => {
     const newFilters = { ...localFilters, [field]: value, page: 1 };
     setLocalFilters(newFilters);
     dispatch(setFilters(newFilters));
   };
-
 
   const handleDatePresetChange = (preset) => {
     if (preset) {
@@ -426,7 +367,6 @@ const Transactions = () => {
     }
   };
 
-
   const clearAllFilters = () => {
     setLocalFilters({
       search: '',
@@ -439,13 +379,11 @@ const Transactions = () => {
     dispatch(clearFilters());
   };
 
-
   const handleEditTransaction = (transaction) => {
     setEditTransaction(transaction);
     setOpenForm(true);
     handleCloseActionMenu();
   };
-
 
   const handleViewTransaction = (transaction) => {
     setViewTransaction(transaction);
@@ -453,22 +391,20 @@ const Transactions = () => {
     handleCloseActionMenu();
   };
 
-
   const handleDeleteClick = (transaction) => {
     setDeleteDialog({ open: true, transaction });
     handleCloseActionMenu();
   };
 
-
   const handleDeleteConfirm = async () => {
     try {
       await dispatch(deleteTransaction(deleteDialog.transaction._id)).unwrap();
       setDeleteDialog({ open: false, transaction: null });
+      handlePageChange(1);
     } catch (error) {
       console.error('Delete failed:', error);
     }
   };
-
 
   const handleCloseForm = () => {
     setOpenForm(false);
@@ -476,35 +412,30 @@ const Transactions = () => {
     setViewTransaction(null);
   };
 
-
   const handleActionMenuClick = (event, transaction) => {
     setActionMenu({ anchorEl: event.currentTarget, transaction });
   };
-
 
   const handleCloseActionMenu = () => {
     setActionMenu({ anchorEl: null, transaction: null });
   };
 
-
-  // ✅ Date fix handlers
   const handleDateFixClick = (transaction) => {
     setDateFixDialog({ open: true, transaction });
     handleCloseActionMenu();
   };
 
-
   const handleDateFixSave = async (transactionId, newDate) => {
     try {
       setDateFixLoading(true);
-      await dispatch(updateTransaction({ 
-        id: transactionId, 
-        data: { date: newDate } 
-      })).unwrap();
-      
-      // Refresh transactions to get updated data
+      await dispatch(
+        updateTransaction({
+          id: transactionId,
+          data: { date: newDate },
+        })
+      ).unwrap();
+
       applyFilters();
-      
       setDateFixDialog({ open: false, transaction: null });
     } catch (error) {
       console.error('Date fix failed:', error);
@@ -513,24 +444,13 @@ const Transactions = () => {
     }
   };
 
-
-  // ✅ ENHANCED PAGE CHANGE HANDLER
   const handlePageChange = (newPage) => {
-    // Smooth scroll to top when changing pages
     window.scrollTo({ top: 0, behavior: 'smooth' });
     handleFilterChange('page', newPage);
   };
 
-
-  const getTypeColor = (type) => {
-    return type === 'income' ? 'success' : 'error';
-  };
-
-
-  const getTypeIcon = (type) => {
-    return type === 'income' ? <TrendingUp /> : <TrendingDown />;
-  };
-
+  const getTypeColor = (type) => (type === 'income' ? 'success' : 'error');
+  const getTypeIcon = (type) => (type === 'income' ? <TrendingUp /> : <TrendingDown />);
 
   const summary = transactions.reduce(
     (acc, transaction) => {
@@ -545,46 +465,42 @@ const Transactions = () => {
     { totalIncome: 0, totalExpenses: 0 }
   );
 
-
   const netBalance = summary.totalIncome - summary.totalExpenses;
 
-
-  // ✅ IMPROVED: Transaction Card Component with subtle highlighting
   const TransactionCard = ({ transaction, index }) => {
     const hasFutureDate = isFutureDate(transaction.date);
-    
+
     return (
       <StaggerItem index={index}>
         <AnimatedCard>
-          <Card sx={{ 
-            borderRadius: 3, 
-            mb: 2,
-            // ✅ IMPROVED: Only border highlighting, no background color change
-            border: hasFutureDate ? '2px solid #f44336' : '1px solid rgba(0,0,0,0.12)',
-            position: 'relative',
-            // ✅ Add subtle glow effect for future dates
-            ...(hasFutureDate && {
-              boxShadow: '0 0 0 1px rgba(244, 67, 54, 0.2), 0 1px 3px rgba(0,0,0,0.12)',
-            })
-          }}>
-            {/* ✅ IMPROVED: More subtle warning indicator */}
+          <Card
+            sx={{
+              borderRadius: 3,
+              mb: 2,
+              border: hasFutureDate ? '2px solid #f44336' : '1px solid rgba(0,0,0,0.12)',
+              position: 'relative',
+              ...(hasFutureDate && {
+                boxShadow: '0 0 0 1px rgba(244, 67, 54, 0.2), 0 1px 3px rgba(0,0,0,0.12)',
+              }),
+            }}
+          >
             {hasFutureDate && (
-              <Box sx={{
-                position: 'absolute',
-                top: 12,
-                right: 12,
-                zIndex: 1
-              }}>
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: 12,
+                  right: 12,
+                  zIndex: 1,
+                }}
+              >
                 <Tooltip title="Future date detected - Click to fix">
-                  <IconButton 
-                    size="small" 
+                  <IconButton
+                    size="small"
                     onClick={() => handleDateFixClick(transaction)}
                     sx={{
                       backgroundColor: 'rgba(244, 67, 54, 0.1)',
                       color: 'error.main',
-                      '&:hover': {
-                        backgroundColor: 'rgba(244, 67, 54, 0.2)',
-                      }
+                      '&:hover': { backgroundColor: 'rgba(244, 67, 54, 0.2)' },
                     }}
                   >
                     <WarningIcon fontSize="small" />
@@ -592,16 +508,8 @@ const Transactions = () => {
                 </Tooltip>
               </Box>
             )}
-            
             <CardContent>
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  mb: 2,
-                }}
-              >
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
                   <Chip
                     icon={getTypeIcon(transaction.type)}
@@ -620,11 +528,9 @@ const Transactions = () => {
                 </IconButton>
               </Box>
 
-
               <Typography variant="subtitle1" sx={{ fontWeight: 500, mb: 1 }}>
                 {transaction.category}
               </Typography>
-
 
               {transaction.description && (
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -632,39 +538,38 @@ const Transactions = () => {
                 </Typography>
               )}
 
-
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <CalendarToday sx={{ 
-                    mr: 1, 
-                    color: hasFutureDate ? 'error.main' : 'text.secondary', 
-                    fontSize: 16 
-                  }} />
+                  <CalendarToday
+                    sx={{
+                      mr: 1,
+                      color: hasFutureDate ? 'error.main' : 'text.secondary',
+                      fontSize: 16,
+                    }}
+                  />
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography 
-                      variant="caption" 
+                    <Typography
+                      variant="caption"
                       color={hasFutureDate ? 'error.main' : 'text.secondary'}
                       sx={{ fontWeight: hasFutureDate ? 600 : 400 }}
                     >
                       {dayjs(transaction.date).format('MMM DD, YYYY hh:mm A')}
                     </Typography>
-                    {/* ✅ IMPROVED: Subtle future date indicator */}
                     {hasFutureDate && (
-                      <Chip 
-                        label="Future" 
-                        size="small" 
+                      <Chip
+                        label="Future"
+                        size="small"
                         variant="outlined"
                         color="error"
-                        sx={{ 
-                          height: '18px', 
+                        sx={{
+                          height: '18px',
                           fontSize: '0.65rem',
-                          '& .MuiChip-label': { px: 1 }
+                          '& .MuiChip-label': { px: 1 },
                         }}
                       />
                     )}
                   </Box>
                 </Box>
-
 
                 {transaction.merchant && (
                   <Typography variant="caption" color="text.secondary">
@@ -679,7 +584,6 @@ const Transactions = () => {
     );
   };
 
-
   if (error) {
     return (
       <Box>
@@ -690,21 +594,19 @@ const Transactions = () => {
     );
   }
 
-
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Box>
-        {/* ✅ Future Date Warning Alert */}
         {futureDateTransactions.length > 0 && showFutureDateAlert && (
           <Collapse in={showFutureDateAlert}>
-            <Alert 
-              severity="warning" 
+            <Alert
+              severity="warning"
               sx={{ mb: 3, borderRadius: 2 }}
               action={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Button 
-                    size="small" 
-                    variant="outlined" 
+                  <Button
+                    size="small"
+                    variant="outlined"
                     color="warning"
                     onClick={() => {
                       if (futureDateTransactions[0]) {
@@ -714,10 +616,7 @@ const Transactions = () => {
                   >
                     Fix Dates
                   </Button>
-                  <IconButton 
-                    size="small" 
-                    onClick={() => setShowFutureDateAlert(false)}
-                  >
+                  <IconButton size="small" onClick={() => setShowFutureDateAlert(false)}>
                     <CloseIcon />
                   </IconButton>
                 </Box>
@@ -727,12 +626,11 @@ const Transactions = () => {
                 <WarningIcon />
                 Unable to Parse Data Perfectly
               </AlertTitle>
-              {futureDateTransactions.length} transaction(s) have future dates which may indicate parsing errors. 
-              Please review and fix the dates manually. Transactions with future dates are highlighted with red borders.
+              {futureDateTransactions.length} transaction(s) have future dates which may indicate parsing errors. Please
+              review and fix the dates manually. Transactions with future dates are highlighted with red borders.
             </Alert>
           </Collapse>
         )}
-
 
         <FadeIn>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -752,8 +650,6 @@ const Transactions = () => {
           </Box>
         </FadeIn>
 
-
-        {/* Summary Cards */}
         <SlideIn direction="up" delay={0.1}>
           <Grid container spacing={3} sx={{ mb: 4 }}>
             <Grid item xs={12} md={4}>
@@ -808,11 +704,8 @@ const Transactions = () => {
           </Grid>
         </SlideIn>
 
+        {/* Filters UI: (your existing UI can be placed here) */}
 
-        {/* Filters - Add your existing filter UI here */}
-
-
-        {/* Loading State */}
         {isLoading && (
           <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
             <CircularProgress size={48} />
@@ -822,8 +715,6 @@ const Transactions = () => {
           </Box>
         )}
 
-
-        {/* Transactions Display */}
         {!isLoading && (
           <SlideIn direction="up" delay={0.3}>
             {viewMode === 'table' ? (
@@ -836,67 +727,71 @@ const Transactions = () => {
                       <TableCell sx={{ color: 'white', fontWeight: 600 }}>Category</TableCell>
                       <TableCell sx={{ color: 'white', fontWeight: 600 }}>Type</TableCell>
                       <TableCell sx={{ color: 'white', fontWeight: 600 }}>Amount</TableCell>
-                      <TableCell align="center" sx={{ color: 'white', fontWeight: 600 }}>Actions</TableCell>
+                      <TableCell align="center" sx={{ color: 'white', fontWeight: 600 }}>
+                        Actions
+                      </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     <AnimatePresence mode="popLayout">
                       {transactions.map((transaction) => {
                         const hasFutureDate = isFutureDate(transaction.date);
-                        
+
                         return (
                           <AnimatedListItem key={transaction._id}>
-                            <TableRow 
-                              hover 
-                              sx={{ 
+                            <TableRow
+                              hover
+                              sx={{
                                 borderLeft: hasFutureDate ? '4px solid #f44336' : '4px solid transparent',
-                                '&:hover': { 
+                                '&:hover': {
                                   backgroundColor: 'action.hover',
-                                  '& .MuiTableCell-root': { borderBottomColor: 'divider' } 
+                                  '& .MuiTableCell-root': { borderBottomColor: 'divider' },
                                 },
                                 ...(hasFutureDate && {
                                   boxShadow: 'inset 0 0 0 1px rgba(244, 67, 54, 0.2)',
-                                })
+                                }),
                               }}
                             >
                               <TableCell sx={{ minWidth: '239px', verticalAlign: 'top' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-                                  <CalendarToday sx={{ 
-                                    mr: 1.5, 
-                                    color: hasFutureDate ? 'error.main' : 'text.secondary', 
-                                    fontSize: 18, 
-                                    mt: 0.5, 
-                                    flexShrink: 0 
-                                  }} />
+                                  <CalendarToday
+                                    sx={{
+                                      mr: 1.5,
+                                      color: hasFutureDate ? 'error.main' : 'text.secondary',
+                                      fontSize: 18,
+                                      mt: 0.5,
+                                      flexShrink: 0,
+                                    }}
+                                  />
                                   <Box>
-                                    <Typography 
-                                      variant="body2" 
-                                      sx={{ 
-                                        fontWeight: 500, 
+                                    <Typography
+                                      variant="body2"
+                                      sx={{
+                                        fontWeight: 500,
                                         lineHeight: 1.4,
-                                        color: hasFutureDate ? 'error.main' : 'text.primary'
+                                        color: hasFutureDate ? 'error.main' : 'text.primary',
                                       }}
                                     >
                                       {dayjs(transaction.date).format('MMM DD, YYYY')}
                                     </Typography>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                                      <Typography 
-                                        variant="caption" 
-                                        color={hasFutureDate ? 'error.main' : 'text.secondary'} 
+                                      <Typography
+                                        variant="caption"
+                                        color={hasFutureDate ? 'error.main' : 'text.secondary'}
                                         sx={{ lineHeight: 1.2 }}
                                       >
                                         {dayjs(transaction.date).format('hh:mm A')}
                                       </Typography>
                                       {hasFutureDate && (
-                                        <Chip 
-                                          label="Future" 
-                                          size="small" 
+                                        <Chip
+                                          label="Future"
+                                          size="small"
                                           variant="outlined"
                                           color="error"
-                                          sx={{ 
-                                            height: '16px', 
+                                          sx={{
+                                            height: '16px',
                                             fontSize: '0.6rem',
-                                            '& .MuiChip-label': { px: 0.5 }
+                                            '& .MuiChip-label': { px: 0.5 },
                                           }}
                                         />
                                       )}
@@ -904,7 +799,6 @@ const Transactions = () => {
                                   </Box>
                                 </Box>
                               </TableCell>
-
 
                               <TableCell sx={{ minWidth: '235px', verticalAlign: 'top' }}>
                                 <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.4, mb: 0.5 }}>
@@ -917,11 +811,11 @@ const Transactions = () => {
                                 )}
                               </TableCell>
 
-
                               <TableCell sx={{ minWidth: '220px', verticalAlign: 'top' }}>
-                                <Typography variant="body2" sx={{ lineHeight: 1.4 }}>{transaction.category}</Typography>
+                                <Typography variant="body2" sx={{ lineHeight: 1.4 }}>
+                                  {transaction.category}
+                                </Typography>
                               </TableCell>
-
 
                               <TableCell sx={{ minWidth: '215px', verticalAlign: 'top' }}>
                                 <Chip
@@ -936,7 +830,6 @@ const Transactions = () => {
                                   }}
                                 />
                               </TableCell>
-
 
                               <TableCell align="right" sx={{ minWidth: '120px', verticalAlign: 'top' }}>
                                 <Typography
@@ -953,32 +846,31 @@ const Transactions = () => {
                                 </Typography>
                               </TableCell>
 
-
                               <TableCell align="center" sx={{ minWidth: '80px', verticalAlign: 'top' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
                                   {hasFutureDate && (
                                     <Tooltip title="Fix future date">
-                                      <IconButton 
-                                        size="small" 
+                                      <IconButton
+                                        size="small"
                                         onClick={() => handleDateFixClick(transaction)}
-                                        sx={{ 
+                                        sx={{
                                           color: 'error.main',
                                           backgroundColor: 'rgba(244, 67, 54, 0.1)',
-                                          '&:hover': { 
-                                            backgroundColor: 'rgba(244, 67, 54, 0.2)' 
-                                          }
+                                          '&:hover': {
+                                            backgroundColor: 'rgba(244, 67, 54, 0.2)',
+                                          },
                                         }}
                                       >
                                         <WarningIcon fontSize="small" />
                                       </IconButton>
                                     </Tooltip>
                                   )}
-                                  <IconButton 
-                                    size="small" 
-                                    onClick={(e) => handleActionMenuClick(e, transaction)} 
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => handleActionMenuClick(e, transaction)}
                                     sx={{ '&:hover': { backgroundColor: 'action.hover' } }}
                                   >
-                                    <MenuIcon />
+                                    <MoreIcon />
                                   </IconButton>
                                 </Box>
                               </TableCell>
@@ -1000,8 +892,6 @@ const Transactions = () => {
           </SlideIn>
         )}
 
-
-        {/* Empty State */}
         {!isLoading && transactions.length === 0 && (
           <SlideIn direction="up" delay={0.3}>
             <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
@@ -1023,14 +913,8 @@ const Transactions = () => {
           </SlideIn>
         )}
 
-
-        {/* ✅ ENHANCED PROFESSIONAL PAGINATION */}
         {pagination && pagination.totalPages > 1 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}>
             <EnhancedPagination
               currentPage={pagination.page}
               totalPages={pagination.totalPages}
@@ -1042,14 +926,10 @@ const Transactions = () => {
           </motion.div>
         )}
 
-
-        {/* Floating Action Button for Mobile */}
         <Fab color="primary" aria-label="add transaction" sx={{ position: 'fixed', bottom: 24, right: 24, display: { xs: 'flex', md: 'none' } }} onClick={() => setOpenForm(true)}>
           <AddIcon />
         </Fab>
 
-
-        {/* Action Menu */}
         <Menu anchorEl={actionMenu.anchorEl} open={Boolean(actionMenu.anchorEl)} onClose={handleCloseActionMenu} PaperProps={{ sx: { borderRadius: 2 } }}>
           <MenuItem onClick={() => handleViewTransaction(actionMenu.transaction)}>
             <ListItemIcon>
@@ -1083,22 +963,10 @@ const Transactions = () => {
           </MenuItem>
         </Menu>
 
+        <DateFixDialog open={dateFixDialog.open} onClose={() => setDateFixDialog({ open: false, transaction: null })} transaction={dateFixDialog.transaction} onSave={handleDateFixSave} isLoading={dateFixLoading} />
 
-        {/* ✅ Date Fix Dialog */}
-        <DateFixDialog
-          open={dateFixDialog.open}
-          onClose={() => setDateFixDialog({ open: false, transaction: null })}
-          transaction={dateFixDialog.transaction}
-          onSave={handleDateFixSave}
-          isLoading={dateFixLoading}
-        />
-
-
-        {/* Transaction Form Dialog */}
         <TransactionForm open={openForm} onClose={handleCloseForm} editData={editTransaction} viewMode={!!viewTransaction} />
 
-
-        {/* Delete Confirmation Dialog */}
         <DeleteConfirmDialog
           open={deleteDialog.open}
           onClose={() => setDeleteDialog({ open: false, transaction: null })}
@@ -1113,6 +981,5 @@ const Transactions = () => {
     </LocalizationProvider>
   );
 };
-
 
 export default Transactions;
