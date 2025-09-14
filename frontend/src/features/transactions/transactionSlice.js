@@ -51,7 +51,7 @@ export const fetchTransactions = createAsyncThunk(
       if (params.sort) queryParams.append('sort', params.sort);
       if (params.order) queryParams.append('order', params.order);
 
-      const response = await fetch(`http://localhost:5000/api/transactions?${queryParams}`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/transactions?${queryParams}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
