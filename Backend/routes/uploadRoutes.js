@@ -13,7 +13,7 @@ const path = require('path');
 // Apply authentication middleware
 router.use(auth);
 
-// ✅ Cloudinary configuration (optional)
+// ✅ Cloudinary configuration (optional) - UNCHANGED
 let isCloudinaryConfigured = false;
 if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
   try {
@@ -32,7 +32,7 @@ if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && proce
   console.warn('⚠️ Cloudinary environment variables not set');
 }
 
-// ✅ Enhanced multer configuration
+// ✅ Enhanced multer configuration - UNCHANGED
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/');
@@ -63,7 +63,7 @@ const upload = multer({
   }
 });
 
-// ✅ FIXED: Optional Cloudinary upload with proper error handling
+// All existing functions remain UNCHANGED
 const uploadToCloudinaryOptional = async (filePath, options = {}) => {
   if (!isCloudinaryConfigured) {
     console.warn('⚠️ Cloudinary not configured, skipping upload');
@@ -95,7 +95,6 @@ const uploadToCloudinaryOptional = async (filePath, options = {}) => {
   }
 };
 
-// ✅ Cleanup function
 const cleanupFile = async (filePath) => {
   try {
     if (filePath) {
@@ -107,7 +106,6 @@ const cleanupFile = async (filePath) => {
   }
 };
 
-// ✅ Enhanced OCR
 async function extractTextFromImage(filePath) {
   console.log('🔍 Starting OCR extraction...');
   
@@ -132,7 +130,6 @@ async function extractTextFromImage(filePath) {
   }
 }
 
-// ✅ Enhanced PDF extraction
 async function extractTextFromPdf(filePath) {
   console.log('📄 Extracting text from PDF...');
   
@@ -154,7 +151,58 @@ async function extractTextFromPdf(filePath) {
   }
 }
 
-// ✅ ENHANCED Gemini API with 2025 date correction
+// ✅ NEW: Date validation helper function (ADDED ONLY THIS)
+function validateParsedDate(dateString, originalText = '') {
+  const today = new Date();
+  today.setHours(23, 59, 59, 999); // End of today
+  
+  let parsedDate;
+  let needsReview = false;
+  let reviewNote = '';
+
+  try {
+    parsedDate = new Date(dateString);
+    
+    // Check if date is invalid
+    if (isNaN(parsedDate.getTime())) {
+      console.warn(`⚠️ Invalid date detected: ${dateString}`);
+      parsedDate = new Date(); // Use today
+      needsReview = true;
+      reviewNote = 'Date could not be parsed correctly from document. Please verify and correct manually.';
+    }
+    // Check if date is in the future
+    else if (parsedDate > today) {
+      console.warn(`⚠️ Future date detected: ${dateString}`);
+      needsReview = true;
+      reviewNote = `Future date detected (${dateString}). Please check if this is correct or needs manual correction.`;
+    }
+    // Check if date seems too old (more than 1 year ago)
+    else {
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(today.getFullYear() - 1);
+      
+      if (parsedDate < oneYearAgo) {
+        console.warn(`⚠️ Very old date detected: ${dateString}`);
+        needsReview = true;
+        reviewNote = `Very old date detected (${dateString}). Please verify this date is accurate.`;
+      }
+    }
+  } catch (error) {
+    console.warn(`⚠️ Date parsing error for ${dateString}:`, error.message);
+    parsedDate = new Date();
+    needsReview = true;
+    reviewNote = 'Date parsing failed. Please verify and correct the date manually.';
+  }
+
+  return {
+    date: parsedDate,
+    needsReview,
+    reviewNote,
+    originalDate: dateString
+  };
+}
+
+// ✅ Enhanced Gemini API - ONLY ADDED DATE VALIDATION AT THE END
 async function enhancedGeminiParsing(extractedText, filename = '') {
   if (!process.env.GEMINI_API_KEY) {
     console.warn('⚠️ GEMINI_API_KEY not configured, using fallback parsing');
@@ -164,6 +212,7 @@ async function enhancedGeminiParsing(extractedText, filename = '') {
   try {
     console.log('🤖 Calling Enhanced Gemini AI...');
     
+    // UNCHANGED PROMPT - KEEPS YOUR EXISTING LOGIC
     const prompt = `Parse this financial data and extract ALL transactions. Return ONLY a JSON array.
 
 CRITICAL: Convert all dates to 2025 format. If you see dates like "30.07.2007" or similar, convert them to 2025 dates (2025-07-30).
@@ -214,13 +263,36 @@ Return ONLY the JSON array:`;
 
     const jsonMatch = geminiText.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
-      const transactions = JSON.parse(jsonMatch[0]);
+      let transactions = JSON.parse(jsonMatch[0]);
+      
+      // ✅ NEW: ONLY ADDITION - Validate dates after parsing
+      transactions = transactions.map((transaction, index) => {
+        const originalDate = transaction.date;
+        const dateValidation = validateParsedDate(originalDate);
+        
+        if (dateValidation.needsReview) {
+          console.warn(`⚠️ Transaction ${index + 1} flagged for review: ${dateValidation.reviewNote}`);
+        }
+        
+        return {
+          ...transaction,
+          date: dateValidation.date,
+          needsManualReview: dateValidation.needsReview,
+          reviewNote: dateValidation.needsReview ? dateValidation.reviewNote : null,
+          originalParsedDate: originalDate
+        };
+      });
+      
       console.log(`✅ JSON parsing successful! Found ${transactions.length} transactions`);
       
-      // Log parsed transactions
+      // Enhanced logging with review status
       console.log('📋 PARSED TRANSACTIONS:');
       transactions.forEach((transaction, index) => {
-        console.log(`   ${index + 1}. ${transaction.type} ₹${transaction.amount} - ${transaction.description} (${transaction.date})`);
+        const reviewFlag = transaction.needsManualReview ? '🚨 REVIEW NEEDED' : '✅';
+        console.log(`   ${index + 1}. ${transaction.type} ₹${transaction.amount} - ${transaction.description} (${transaction.date.toISOString().split('T')[0]}) ${reviewFlag}`);
+        if (transaction.reviewNote) {
+          console.log(`      ⚠️ ${transaction.reviewNote}`);
+        }
       });
       
       return Array.isArray(transactions) ? transactions : [transactions];
@@ -233,13 +305,13 @@ Return ONLY the JSON array:`;
   }
 }
 
-// ✅ Enhanced Structured Parsing as Fallback
+// ✅ Enhanced Structured Parsing - ONLY ADDED DATE VALIDATION AT THE END
 function parseTransactionData(text) {
   console.log('🔍 Using structured parsing as fallback...');
   
   const transactions = [];
   
-  // Look for total amounts and dates in the text
+  // UNCHANGED PARSING LOGIC - KEEPS YOUR EXISTING FUNCTIONALITY
   const amountRegex = /(?:total[:\s]*)?(?:CHF|GF|₹|Rs\.?|INR)?\s*(\d+(?:\.\d{2})?)/gi;
   const dateRegex = /(\d{1,2}[\/\-\.]?\d{1,2}[\/\-\.]?\d{2,4})/g;
   
@@ -256,11 +328,10 @@ function parseTransactionData(text) {
   }
   
   if (amounts.length > 0) {
-    // Use the largest amount as the main transaction
     const mainAmount = Math.max(...amounts);
     const date = dates.length > 0 ? dates[0] : new Date().toISOString().split('T')[0];
     
-    // Parse date and convert to 2025
+    // UNCHANGED DATE PARSING LOGIC
     let parsedDate;
     try {
       const dateParts = date.split(/[\/\-\.]/);
@@ -269,29 +340,38 @@ function parseTransactionData(text) {
         const month = parseInt(dateParts[1]);
         parsedDate = new Date(2025, month - 1, day);
       } else {
-        parsedDate = new Date(2025, 6, 30); // Default to July 30, 2025
+        parsedDate = new Date(2025, 6, 30);
       }
     } catch (error) {
       parsedDate = new Date(2025, 6, 30);
     }
     
+    // ✅ NEW: ONLY ADDITION - Validate the parsed date
+    const dateValidation = validateParsedDate(parsedDate.toISOString().split('T')[0]);
+    
     const transaction = {
-      date: parsedDate,
+      date: dateValidation.date,
       amount: mainAmount,
       type: 'expense',
       description: `Receipt transaction - ${mainAmount}`,
       category: 'Other',
+      needsManualReview: dateValidation.needsReview,
+      reviewNote: dateValidation.needsReview ? dateValidation.reviewNote : null,
       isValid: true
     };
     
     transactions.push(transaction);
-    console.log(`✅ Fallback parsed: ${transaction.type} ₹${transaction.amount} - ${transaction.description}`);
+    const reviewFlag = transaction.needsManualReview ? '🚨 REVIEW NEEDED' : '✅';
+    console.log(`✅ Fallback parsed: ${transaction.type} ₹${transaction.amount} - ${transaction.description} ${reviewFlag}`);
+    if (transaction.reviewNote) {
+      console.log(`   ⚠️ ${transaction.reviewNote}`);
+    }
   }
   
   return transactions;
 }
 
-// ✅ CRITICAL FIX: Receipt Upload Route with UNIFIED Response Format
+// ✅ Receipt Upload Route - MINIMAL CHANGES, ONLY ADDED REVIEW FIELDS TO DATABASE SAVE
 router.post('/receipt', upload.single('file'), async (req, res) => {
   let filePath = null;
   let cloudinaryResult = null;
@@ -314,7 +394,7 @@ router.post('/receipt', upload.single('file'), async (req, res) => {
       throw new Error('Invalid file type. Please upload an image file.');
     }
 
-    // Step 1: Extract text
+    // UNCHANGED - All extraction and parsing logic remains the same
     console.log('🔍 ============= EXTRACTING TEXT =============');
     const extractedText = await extractTextFromImage(filePath);
 
@@ -322,14 +402,12 @@ router.post('/receipt', upload.single('file'), async (req, res) => {
       throw new Error('Could not extract readable text from image.');
     }
 
-    // Step 2: Upload to Cloudinary (optional)
     console.log('☁️ ============= UPLOADING TO CLOUDINARY =============');
     cloudinaryResult = await uploadToCloudinaryOptional(filePath, {
       public_id: `receipt_${Date.now()}_${path.parse(req.file.originalname).name}`,
       folder: 'expense-tracker/receipts'
     });
 
-    // Step 3: Parse transactions
     console.log('🤖 ============= PARSING TRANSACTIONS =============');
     let transactions = await enhancedGeminiParsing(extractedText, req.file.originalname);
     let parsingMethod = 'Gemini AI';
@@ -342,7 +420,7 @@ router.post('/receipt', upload.single('file'), async (req, res) => {
 
     console.log(`🎯 Final transaction count: ${transactions.length}`);
 
-    // Step 4: Save to database
+    // ✅ MINIMAL CHANGE: Only added review fields to database save
     console.log('💾 ============= SAVING TO DATABASE =============');
     const savedTransactions = [];
     const userId = req.user._id || req.user.id;
@@ -361,11 +439,19 @@ router.post('/receipt', upload.single('file'), async (req, res) => {
             fileUrl: cloudinaryResult?.secure_url || null,
             extractedText: extractedText,
             parsingMethod: parsingMethod,
+            // ✅ ONLY NEW FIELDS ADDED
+            needsManualReview: transactionData.needsManualReview || false,
+            reviewNote: transactionData.reviewNote || null,
           });
 
           const saved = await transaction.save();
           savedTransactions.push(saved);
-          console.log(`✅ Saved: ${saved.description} - ₹${saved.amount} (${saved.type})`);
+          
+          const reviewFlag = saved.needsManualReview ? '🚨 REVIEW NEEDED' : '✅';
+          console.log(`✅ Saved: ${saved.description} - ₹${saved.amount} (${saved.type}) ${reviewFlag}`);
+          if (saved.reviewNote) {
+            console.log(`   ⚠️ ${saved.reviewNote}`);
+          }
         } catch (saveError) {
           console.error('❌ Save error:', saveError.message);
         }
@@ -374,26 +460,28 @@ router.post('/receipt', upload.single('file'), async (req, res) => {
 
     const processingTime = Date.now() - startTime;
     
-    // ✅ CRITICAL FIX: Calculate proper statistics
+    // ✅ MINIMAL CHANGE: Only added reviewCount to statistics
     const incomeTransactions = savedTransactions.filter(t => t.type === 'income');
     const expenseTransactions = savedTransactions.filter(t => t.type === 'expense');
+    const reviewTransactions = savedTransactions.filter(t => t.needsManualReview);
     const totalIncome = incomeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
     const totalExpenses = expenseTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
 
-    console.log(`✅ RECEIPT PROCESSING COMPLETE: ${savedTransactions.length} transactions saved`);
+    console.log(`✅ RECEIPT PROCESSING COMPLETE: ${savedTransactions.length} transactions saved, ${reviewTransactions.length} flagged for review`);
 
-    // ✅ CRITICAL FIX: Send response in the SAME format as bank statement
+    // ✅ MINIMAL CHANGE: Only added reviewCount and warning message
     const response = {
       success: true,
-      message: `Receipt processed successfully! Imported ${savedTransactions.length} transaction(s) using ${parsingMethod}.`,
+      message: `Receipt processed successfully! Imported ${savedTransactions.length} transaction(s) using ${parsingMethod}.${reviewTransactions.length > 0 ? ` ⚠️ ${reviewTransactions.length} transaction(s) require manual review due to parsing issues.` : ''}`,
       data: {
-        transactions: savedTransactions, // ✅ Frontend needs this array
+        transactions: savedTransactions,
         fileUrl: cloudinaryResult?.secure_url || null,
         extractedText: extractedText,
-        stats: { // ✅ Frontend uses this for displaying counts and amounts
+        stats: {
           transactionCount: savedTransactions.length,
           incomeCount: incomeTransactions.length,
           expenseCount: expenseTransactions.length,
+          reviewCount: reviewTransactions.length, // ✅ ONLY NEW FIELD
           totalIncome: totalIncome,
           totalExpenses: totalExpenses,
           netAmount: totalIncome - totalExpenses,
@@ -412,9 +500,9 @@ router.post('/receipt', upload.single('file'), async (req, res) => {
     };
 
     console.log('📤 SENDING RESPONSE TO FRONTEND');
-    console.log(`📊 Response summary: ${response.data.stats.transactionCount} transactions, ₹${response.data.stats.totalIncome} income, ₹${response.data.stats.totalExpenses} expenses`);
+    console.log(`📊 Response summary: ${response.data.stats.transactionCount} transactions, ₹${response.data.stats.totalIncome} income, ₹${response.data.stats.totalExpenses} expenses, ${response.data.stats.reviewCount} need review`);
     
-    res.status(200).json(response); // ✅ CRITICAL: Send the unified response format
+    res.status(200).json(response);
 
   } catch (error) {
     console.error('❌ Receipt processing error:', error.message);
@@ -432,7 +520,7 @@ router.post('/receipt', upload.single('file'), async (req, res) => {
   }
 });
 
-// ✅ Bank Statement Upload Route (Already Fixed)
+// ✅ Bank Statement Upload Route - SAME MINIMAL CHANGES AS RECEIPT
 router.post('/bank-statement', upload.single('file'), async (req, res) => {
   let filePath = null;
   let cloudinaryResult = null;
@@ -455,7 +543,7 @@ router.post('/bank-statement', upload.single('file'), async (req, res) => {
       throw new Error('Invalid file type. Please upload a PDF file.');
     }
 
-    // Step 1: Extract text from PDF
+    // UNCHANGED - All extraction and parsing logic remains the same
     console.log('📄 ============= EXTRACTING PDF TEXT =============');
     const extractedText = await extractTextFromPdf(filePath);
 
@@ -463,19 +551,16 @@ router.post('/bank-statement', upload.single('file'), async (req, res) => {
       throw new Error('Could not extract sufficient text from PDF.');
     }
 
-    // Step 2: Upload to Cloudinary (optional)
     console.log('☁️ ============= UPLOADING TO CLOUDINARY =============');
     cloudinaryResult = await uploadToCloudinaryOptional(filePath, {
       public_id: `statement_${Date.now()}_${path.parse(req.file.originalname).name}`,
       folder: 'expense-tracker/statements'
     });
 
-    // Step 3: Parse transactions - TRY GEMINI FIRST
     console.log('🤖 ============= PARSING TRANSACTIONS =============');
     let transactions = await enhancedGeminiParsing(extractedText, req.file.originalname);
     let parsingMethod = 'Gemini AI';
 
-    // If Gemini fails, use structured parsing
     if (!transactions || transactions.length === 0) {
       console.log('⚠️ Gemini failed, using structured parsing...');
       transactions = parseTransactionData(extractedText);
@@ -484,7 +569,7 @@ router.post('/bank-statement', upload.single('file'), async (req, res) => {
 
     console.log(`🎯 Final transaction count: ${transactions.length}`);
 
-    // Step 4: Save to database
+    // ✅ MINIMAL CHANGE: Only added review fields to database save
     console.log('💾 ============= SAVING TO DATABASE =============');
     const savedTransactions = [];
     const userId = req.user._id || req.user.id;
@@ -496,7 +581,8 @@ router.post('/bank-statement', upload.single('file'), async (req, res) => {
             amount: transactionData.amount,
             description: transactionData.description,
             type: transactionData.type,
-            category: transactionData.category
+            category: transactionData.category,
+            needsReview: transactionData.needsManualReview
           });
 
           const transaction = new Transaction({
@@ -510,11 +596,16 @@ router.post('/bank-statement', upload.single('file'), async (req, res) => {
             fileUrl: cloudinaryResult?.secure_url || null,
             extractedText: extractedText,
             parsingMethod: parsingMethod,
+            // ✅ ONLY NEW FIELDS ADDED
+            needsManualReview: transactionData.needsManualReview || false,
+            reviewNote: transactionData.reviewNote || null,
           });
 
           const saved = await transaction.save();
           savedTransactions.push(saved);
-          console.log(`✅ Saved transaction with ID: ${saved._id}`);
+          
+          const reviewFlag = saved.needsManualReview ? '🚨 REVIEW NEEDED' : '✅';
+          console.log(`✅ Saved transaction with ID: ${saved._id} ${reviewFlag}`);
         } catch (saveError) {
           console.error(`❌ Save error for transaction ${index + 1}:`, saveError.message);
         }
@@ -524,16 +615,17 @@ router.post('/bank-statement', upload.single('file'), async (req, res) => {
     const processingTime = Date.now() - startTime;
     console.log(`✅ BANK STATEMENT PROCESSING COMPLETE: ${savedTransactions.length} transactions saved`);
 
-    // ✅ Calculate proper statistics
+    // ✅ MINIMAL CHANGE: Only added reviewCount to statistics
     const incomeTransactions = savedTransactions.filter(t => t.type === 'income');
     const expenseTransactions = savedTransactions.filter(t => t.type === 'expense');
+    const reviewTransactions = savedTransactions.filter(t => t.needsManualReview);
     const totalIncome = incomeTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
     const totalExpenses = expenseTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
 
-    // ✅ Send response in the correct format
+    // ✅ MINIMAL CHANGE: Only added reviewCount and warning message
     const response = {
       success: true,
-      message: `Bank statement processed successfully! Imported ${savedTransactions.length} transaction(s) using ${parsingMethod}.`,
+      message: `Bank statement processed successfully! Imported ${savedTransactions.length} transaction(s) using ${parsingMethod}.${reviewTransactions.length > 0 ? ` ⚠️ ${reviewTransactions.length} transaction(s) require manual review due to parsing issues.` : ''}`,
       data: {
         transactions: savedTransactions,
         fileUrl: cloudinaryResult?.secure_url || null,
@@ -542,6 +634,7 @@ router.post('/bank-statement', upload.single('file'), async (req, res) => {
           transactionCount: savedTransactions.length,
           incomeCount: incomeTransactions.length,
           expenseCount: expenseTransactions.length,
+          reviewCount: reviewTransactions.length, // ✅ ONLY NEW FIELD
           totalIncome: totalIncome,
           totalExpenses: totalExpenses,
           netAmount: totalIncome - totalExpenses,
@@ -565,6 +658,7 @@ router.post('/bank-statement', upload.single('file'), async (req, res) => {
       transactionCount: response.data.stats.transactionCount,
       totalIncome: response.data.stats.totalIncome,
       totalExpenses: response.data.stats.totalExpenses,
+      reviewCount: response.data.stats.reviewCount,
       message: response.message
     });
 

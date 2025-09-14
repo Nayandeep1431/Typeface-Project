@@ -33,6 +33,12 @@ import {
   Switch,
   FormControlLabel,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  AlertTitle,
+  Collapse,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -48,6 +54,11 @@ import {
   Clear as ClearIcon,
   TableChart as TableIcon,
   ViewModule as CardIcon,
+  Menu as MenuIcon,
+  Warning as WarningIcon,
+  Schedule as ScheduleIcon,
+  Save as SaveIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -57,6 +68,7 @@ import dayjs from 'dayjs';
 import {
   fetchTransactions,
   deleteTransaction,
+  updateTransaction,
   setFilters,
   clearFilters,
   clearError,
@@ -99,6 +111,78 @@ const categories = [
   'Other',
 ];
 
+// ✅ Date validation helper
+const isFutureDate = (date) => {
+  const today = dayjs().startOf('day');
+  const compareDate = dayjs(date).startOf('day');
+  return compareDate.isAfter(today);
+};
+
+// ✅ Date Fix Dialog Component
+const DateFixDialog = ({ open, onClose, transaction, onSave, isLoading }) => {
+  const [newDate, setNewDate] = useState(null);
+
+  useEffect(() => {
+    if (transaction && open) {
+      setNewDate(dayjs(transaction.date));
+    }
+  }, [transaction, open]);
+
+  const handleSave = async () => {
+    if (newDate && transaction) {
+      await onSave(transaction._id, newDate.toISOString());
+      onClose();
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <ScheduleIcon color="warning" />
+        <Typography variant="h6">Fix Transaction Date</Typography>
+      </DialogTitle>
+      <DialogContent>
+        <Box sx={{ pt: 2 }}>
+          <Alert severity="warning" sx={{ mb: 3 }}>
+            <AlertTitle>Future Date Detected</AlertTitle>
+            This transaction has a future date which may indicate a parsing error. Please verify and correct the date below.
+          </Alert>
+          
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Current Date: {transaction && dayjs(transaction.date).format('MMMM DD, YYYY hh:mm A')}
+          </Typography>
+          
+          <DatePicker
+            label="Corrected Date"
+            value={newDate}
+            onChange={setNewDate}
+            maxDate={dayjs()}
+            slotProps={{
+              textField: {
+                fullWidth: true,
+                helperText: "Select a date not later than today"
+              }
+            }}
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={isLoading}>
+          Cancel
+        </Button>
+        <Button 
+          onClick={handleSave} 
+          variant="contained" 
+          disabled={!newDate || isLoading}
+          startIcon={isLoading ? <CircularProgress size={16} /> : <SaveIcon />}
+        >
+          {isLoading ? 'Saving...' : 'Save Date'}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 const Transactions = () => {
   const dispatch = useDispatch();
   const {
@@ -116,6 +200,16 @@ const Transactions = () => {
   const [actionMenu, setActionMenu] = useState({ anchorEl: null, transaction: null });
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'card'
   const [localFilters, setLocalFilters] = useState(filters);
+  
+  // ✅ Date fix dialog state
+  const [dateFixDialog, setDateFixDialog] = useState({ open: false, transaction: null });
+  const [dateFixLoading, setDateFixLoading] = useState(false);
+  const [showFutureDateAlert, setShowFutureDateAlert] = useState(true);
+
+  // ✅ Calculate future date transactions
+  const futureDateTransactions = transactions.filter(transaction => 
+    isFutureDate(transaction.date)
+  );
 
   useEffect(() => {
     applyFilters();
@@ -210,6 +304,31 @@ const Transactions = () => {
     setActionMenu({ anchorEl: null, transaction: null });
   };
 
+  // ✅ Date fix handlers
+  const handleDateFixClick = (transaction) => {
+    setDateFixDialog({ open: true, transaction });
+    handleCloseActionMenu();
+  };
+
+  const handleDateFixSave = async (transactionId, newDate) => {
+    try {
+      setDateFixLoading(true);
+      await dispatch(updateTransaction({ 
+        id: transactionId, 
+        data: { date: newDate } 
+      })).unwrap();
+      
+      // Refresh transactions to get updated data
+      applyFilters();
+      
+      setDateFixDialog({ open: false, transaction: null });
+    } catch (error) {
+      console.error('Date fix failed:', error);
+    } finally {
+      setDateFixLoading(false);
+    }
+  };
+
   const getTypeColor = (type) => {
     return type === 'income' ? 'success' : 'error';
   };
@@ -233,67 +352,131 @@ const Transactions = () => {
 
   const netBalance = summary.totalIncome - summary.totalExpenses;
 
-  // Transaction Card Component
-  const TransactionCard = ({ transaction, index }) => (
-    <StaggerItem index={index}>
-      <AnimatedCard>
-        <Card sx={{ borderRadius: 3, mb: 2 }}>
-          <CardContent>
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                mb: 2,
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Chip
-                  icon={getTypeIcon(transaction.type)}
-                  label={transaction.type}
-                  color={getTypeColor(transaction.type)}
-                  size="small"
-                  variant="outlined"
-                  sx={{ mr: 1 }}
-                />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  ₹{(transaction.amount ?? 0).toLocaleString('en-IN')}
-                </Typography>
+  // ✅ IMPROVED: Transaction Card Component with subtle highlighting
+  const TransactionCard = ({ transaction, index }) => {
+    const hasFutureDate = isFutureDate(transaction.date);
+    
+    return (
+      <StaggerItem index={index}>
+        <AnimatedCard>
+          <Card sx={{ 
+            borderRadius: 3, 
+            mb: 2,
+            // ✅ IMPROVED: Only border highlighting, no background color change
+            border: hasFutureDate ? '2px solid #f44336' : '1px solid rgba(0,0,0,0.12)',
+            position: 'relative',
+            // ✅ Add subtle glow effect for future dates
+            ...(hasFutureDate && {
+              boxShadow: '0 0 0 1px rgba(244, 67, 54, 0.2), 0 1px 3px rgba(0,0,0,0.12)',
+            })
+          }}>
+            {/* ✅ IMPROVED: More subtle warning indicator */}
+            {hasFutureDate && (
+              <Box sx={{
+                position: 'absolute',
+                top: 12,
+                right: 12,
+                zIndex: 1
+              }}>
+                <Tooltip title="Future date detected - Click to fix">
+                  <IconButton 
+                    size="small" 
+                    onClick={() => handleDateFixClick(transaction)}
+                    sx={{
+                      backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                      color: 'error.main',
+                      '&:hover': {
+                        backgroundColor: 'rgba(244, 67, 54, 0.2)',
+                      }
+                    }}
+                  >
+                    <WarningIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
               </Box>
-              <IconButton size="small" onClick={(e) => handleActionMenuClick(e, transaction)}>
-                <MoreIcon />
-              </IconButton>
-            </Box>
-
-            <Typography variant="subtitle1" sx={{ fontWeight: 500, mb: 1 }}>
-              {transaction.category}
-            </Typography>
-
-            {transaction.description && (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                {transaction.description}
-              </Typography>
             )}
-
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <CalendarToday sx={{ mr: 1, color: 'text.secondary', fontSize: 16 }} />
-                <Typography variant="caption" color="text.secondary">
-                  {dayjs(transaction.date).format('MMM DD, YYYY hh:mm A')}
-                </Typography>
+            
+            <CardContent>
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  mb: 2,
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <Chip
+                    icon={getTypeIcon(transaction.type)}
+                    label={transaction.type}
+                    color={getTypeColor(transaction.type)}
+                    size="small"
+                    variant="outlined"
+                    sx={{ mr: 1 }}
+                  />
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    ₹{(transaction.amount ?? 0).toLocaleString('en-IN')}
+                  </Typography>
+                </Box>
+                <IconButton size="small" onClick={(e) => handleActionMenuClick(e, transaction)}>
+                  <MoreIcon />
+                </IconButton>
               </Box>
 
-              {transaction.merchant && (
-                <Typography variant="caption" color="text.secondary">
-                  {transaction.merchant}
+              <Typography variant="subtitle1" sx={{ fontWeight: 500, mb: 1 }}>
+                {transaction.category}
+              </Typography>
+
+              {transaction.description && (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  {transaction.description}
                 </Typography>
               )}
-            </Box>
-          </CardContent>
-        </Card>
-      </AnimatedCard>
-    </StaggerItem>
-  );
+
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <CalendarToday sx={{ 
+                    mr: 1, 
+                    color: hasFutureDate ? 'error.main' : 'text.secondary', 
+                    fontSize: 16 
+                  }} />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography 
+                      variant="caption" 
+                      color={hasFutureDate ? 'error.main' : 'text.secondary'}
+                      sx={{ fontWeight: hasFutureDate ? 600 : 400 }}
+                    >
+                      {dayjs(transaction.date).format('MMM DD, YYYY hh:mm A')}
+                    </Typography>
+                    {/* ✅ IMPROVED: Subtle future date indicator */}
+                    {hasFutureDate && (
+                      <Chip 
+                        label="Future" 
+                        size="small" 
+                        variant="outlined"
+                        color="error"
+                        sx={{ 
+                          height: '18px', 
+                          fontSize: '0.65rem',
+                          '& .MuiChip-label': { px: 1 }
+                        }}
+                      />
+                    )}
+                  </Box>
+                </Box>
+
+                {transaction.merchant && (
+                  <Typography variant="caption" color="text.secondary">
+                    {transaction.merchant}
+                  </Typography>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </AnimatedCard>
+      </StaggerItem>
+    );
+  };
 
   if (error) {
     return (
@@ -308,6 +491,46 @@ const Transactions = () => {
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Box>
+        {/* ✅ Future Date Warning Alert */}
+        {futureDateTransactions.length > 0 && showFutureDateAlert && (
+          <Collapse in={showFutureDateAlert}>
+            <Alert 
+              severity="warning" 
+              sx={{ mb: 3, borderRadius: 2 }}
+              action={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Button 
+                    size="small" 
+                    variant="outlined" 
+                    color="warning"
+                    onClick={() => {
+                      // Show the first future date transaction for fixing
+                      if (futureDateTransactions[0]) {
+                        handleDateFixClick(futureDateTransactions[0]);
+                      }
+                    }}
+                  >
+                    Fix Dates
+                  </Button>
+                  <IconButton 
+                    size="small" 
+                    onClick={() => setShowFutureDateAlert(false)}
+                  >
+                    <CloseIcon />
+                  </IconButton>
+                </Box>
+              }
+            >
+              <AlertTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <WarningIcon />
+                Unable to Parse Data Perfectly
+              </AlertTitle>
+              {futureDateTransactions.length} transaction(s) have future dates which may indicate parsing errors. 
+              Please review and fix the dates manually. Transactions with future dates are highlighted with red borders.
+            </Alert>
+          </Collapse>
+        )}
+
         <FadeIn>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
             <Typography variant="h4" sx={{ fontWeight: 700 }}>
@@ -381,8 +604,7 @@ const Transactions = () => {
           </Grid>
         </SlideIn>
 
-        {/* Filters */}
-        {/* ... Your filter UI code remains unchanged ... */}
+        {/* Filters - Add your existing filter UI here */}
 
         {/* Transactions Display */}
         {!isLoading && (
@@ -392,84 +614,160 @@ const Transactions = () => {
                 <Table sx={{ tableLayout: 'fixed', minWidth: '800px' }}>
                   <TableHead>
                     <TableRow sx={{ backgroundColor: 'primary.main' }}>
-                      <TableCell>Date & Time</TableCell>
-                      <TableCell>Description</TableCell>
-                      <TableCell>Category</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Amount</TableCell>
+                      <TableCell sx={{ color: 'white', fontWeight: 600 }}>Date & Time</TableCell>
+                      <TableCell sx={{ color: 'white', fontWeight: 600 }}>Description</TableCell>
+                      <TableCell sx={{ color: 'white', fontWeight: 600 }}>Category</TableCell>
+                      <TableCell sx={{ color: 'white', fontWeight: 600 }}>Type</TableCell>
+                      <TableCell sx={{ color: 'white', fontWeight: 600 }}>Amount</TableCell>
+                      <TableCell align="center" sx={{ color: 'white', fontWeight: 600 }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     <AnimatePresence mode="popLayout">
-                      {transactions.map((transaction) => (
-                        <AnimatedListItem key={transaction._id}>
-                          <TableRow hover sx={{ '&:hover': { backgroundColor: 'action.hover', '& .MuiTableCell-root': { borderBottomColor: 'divider' } } }}>
-                            <TableCell sx={{ minWidth: '239px', verticalAlign: 'top' }}>
-                              <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
-                                <CalendarToday sx={{ mr: 1.5, color: 'text.secondary', fontSize: 18, mt: 0.5, flexShrink: 0 }} />
-                                <Box>
-                                  <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.4 }}>
-                                    {dayjs(transaction.date).format('MMM DD, YYYY')}
-                                  </Typography>
-                                  <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                                    {dayjs(transaction.date).format('hh:mm A')}
-                                  </Typography>
+                      {transactions.map((transaction) => {
+                        const hasFutureDate = isFutureDate(transaction.date);
+                        
+                        return (
+                          <AnimatedListItem key={transaction._id}>
+                            <TableRow 
+                              hover 
+                              sx={{ 
+                                // ✅ IMPROVED: Only border highlighting, no background change
+                                borderLeft: hasFutureDate ? '4px solid #f44336' : '4px solid transparent',
+                                '&:hover': { 
+                                  backgroundColor: 'action.hover',
+                                  '& .MuiTableCell-root': { borderBottomColor: 'divider' } 
+                                },
+                                // ✅ Subtle shadow for future dates
+                                ...(hasFutureDate && {
+                                  boxShadow: 'inset 0 0 0 1px rgba(244, 67, 54, 0.2)',
+                                })
+                              }}
+                            >
+                              <TableCell sx={{ minWidth: '239px', verticalAlign: 'top' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+                                  <CalendarToday sx={{ 
+                                    mr: 1.5, 
+                                    color: hasFutureDate ? 'error.main' : 'text.secondary', 
+                                    fontSize: 18, 
+                                    mt: 0.5, 
+                                    flexShrink: 0 
+                                  }} />
+                                  <Box>
+                                    <Typography 
+                                      variant="body2" 
+                                      sx={{ 
+                                        fontWeight: 500, 
+                                        lineHeight: 1.4,
+                                        color: hasFutureDate ? 'error.main' : 'text.primary'
+                                      }}
+                                    >
+                                      {dayjs(transaction.date).format('MMM DD, YYYY')}
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                      <Typography 
+                                        variant="caption" 
+                                        color={hasFutureDate ? 'error.main' : 'text.secondary'} 
+                                        sx={{ lineHeight: 1.2 }}
+                                      >
+                                        {dayjs(transaction.date).format('hh:mm A')}
+                                      </Typography>
+                                      {/* ✅ IMPROVED: Subtle future indicator */}
+                                      {hasFutureDate && (
+                                        <Chip 
+                                          label="Future" 
+                                          size="small" 
+                                          variant="outlined"
+                                          color="error"
+                                          sx={{ 
+                                            height: '16px', 
+                                            fontSize: '0.6rem',
+                                            '& .MuiChip-label': { px: 0.5 }
+                                          }}
+                                        />
+                                      )}
+                                    </Box>
+                                  </Box>
                                 </Box>
-                              </Box>
-                            </TableCell>
+                              </TableCell>
 
-                            <TableCell sx={{ minWidth: '235px', verticalAlign: 'top' }}>
-                              <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.4, mb: 0.5 }}>
-                                {transaction.description || 'No description'}
-                              </Typography>
-                              {transaction.merchant && (
-                                <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
-                                  {transaction.merchant}
+                              <TableCell sx={{ minWidth: '235px', verticalAlign: 'top' }}>
+                                <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.4, mb: 0.5 }}>
+                                  {transaction.description || 'No description'}
                                 </Typography>
-                              )}
-                            </TableCell>
+                                {transaction.merchant && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2 }}>
+                                    {transaction.merchant}
+                                  </Typography>
+                                )}
+                              </TableCell>
 
-                            <TableCell sx={{ minWidth: '220px', verticalAlign: 'top' }}>
-                              <Typography variant="body2" sx={{ lineHeight: 1.4 }}>{transaction.category}</Typography>
-                            </TableCell>
+                              <TableCell sx={{ minWidth: '220px', verticalAlign: 'top' }}>
+                                <Typography variant="body2" sx={{ lineHeight: 1.4 }}>{transaction.category}</Typography>
+                              </TableCell>
 
-                            <TableCell sx={{ minWidth: '215px', verticalAlign: 'top' }}>
-                              <Chip
-                                icon={getTypeIcon(transaction.type)}
-                                label={transaction.type}
-                                color={getTypeColor(transaction.type)}
-                                size="small"
-                                variant="outlined"
-                                sx={{
-                                  fontWeight: 500,
-                                  '& .MuiChip-icon': { fontSize: 16 },
-                                }}
-                              />
-                            </TableCell>
+                              <TableCell sx={{ minWidth: '215px', verticalAlign: 'top' }}>
+                                <Chip
+                                  icon={getTypeIcon(transaction.type)}
+                                  label={transaction.type}
+                                  color={getTypeColor(transaction.type)}
+                                  size="small"
+                                  variant="outlined"
+                                  sx={{
+                                    fontWeight: 500,
+                                    '& .MuiChip-icon': { fontSize: 16 },
+                                  }}
+                                />
+                              </TableCell>
 
-                            <TableCell align="right" sx={{ minWidth: '120px', verticalAlign: 'top' }}>
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  color: transaction.type === 'income' ? 'success.main' : 'error.main',
-                                  fontWeight: 600,
-                                  lineHeight: 1.4,
-                                  fontSize: '0.95rem',
-                                }}
-                              >
-                                {transaction.type === 'income' ? '+' : '-'}₹
-                                {(transaction.amount ?? 0).toLocaleString('en-IN')}
-                              </Typography>
-                            </TableCell>
+                              <TableCell align="right" sx={{ minWidth: '120px', verticalAlign: 'top' }}>
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    color: transaction.type === 'income' ? 'success.main' : 'error.main',
+                                    fontWeight: 600,
+                                    lineHeight: 1.4,
+                                    fontSize: '0.95rem',
+                                  }}
+                                >
+                                  {transaction.type === 'income' ? '+' : '-'}₹
+                                  {(transaction.amount ?? 0).toLocaleString('en-IN')}
+                                </Typography>
+                              </TableCell>
 
-                            <TableCell align="center" sx={{ minWidth: '80px', verticalAlign: 'top' }}>
-                              <IconButton size="small" onClick={(e) => handleActionMenuClick(e, transaction)} sx={{ '&:hover': { backgroundColor: 'action.hover' } }}>
-                                <MoreIcon />
-                              </IconButton>
-                            </TableCell>
-                          </TableRow>
-                        </AnimatedListItem>
-                      ))}
+                              <TableCell align="center" sx={{ minWidth: '80px', verticalAlign: 'top' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                                  {/* ✅ IMPROVED: More subtle warning button */}
+                                  {hasFutureDate && (
+                                    <Tooltip title="Fix future date">
+                                      <IconButton 
+                                        size="small" 
+                                        onClick={() => handleDateFixClick(transaction)}
+                                        sx={{ 
+                                          color: 'error.main',
+                                          backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                                          '&:hover': { 
+                                            backgroundColor: 'rgba(244, 67, 54, 0.2)' 
+                                          }
+                                        }}
+                                      >
+                                        <WarningIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
+                                  )}
+                                  <IconButton 
+                                    size="small" 
+                                    onClick={(e) => handleActionMenuClick(e, transaction)} 
+                                    sx={{ '&:hover': { backgroundColor: 'action.hover' } }}
+                                  >
+                                    <MenuIcon />
+                                  </IconButton>
+                                </Box>
+                              </TableCell>
+                            </TableRow>
+                          </AnimatedListItem>
+                        );
+                      })}
                     </AnimatePresence>
                   </TableBody>
                 </Table>
@@ -532,6 +830,17 @@ const Transactions = () => {
             </ListItemIcon>
             <ListItemText>Edit Transaction</ListItemText>
           </MenuItem>
+          {actionMenu.transaction && isFutureDate(actionMenu.transaction.date) && (
+            <>
+              <Divider />
+              <MenuItem onClick={() => handleDateFixClick(actionMenu.transaction)} sx={{ color: 'warning.main' }}>
+                <ListItemIcon>
+                  <ScheduleIcon fontSize="small" color="warning" />
+                </ListItemIcon>
+                <ListItemText>Fix Date</ListItemText>
+              </MenuItem>
+            </>
+          )}
           <Divider />
           <MenuItem onClick={() => handleDeleteClick(actionMenu.transaction)} sx={{ color: 'error.main' }}>
             <ListItemIcon>
@@ -540,6 +849,15 @@ const Transactions = () => {
             <ListItemText>Delete Transaction</ListItemText>
           </MenuItem>
         </Menu>
+
+        {/* ✅ Date Fix Dialog */}
+        <DateFixDialog
+          open={dateFixDialog.open}
+          onClose={() => setDateFixDialog({ open: false, transaction: null })}
+          transaction={dateFixDialog.transaction}
+          onSave={handleDateFixSave}
+          isLoading={dateFixLoading}
+        />
 
         {/* Transaction Form Dialog */}
         <TransactionForm open={openForm} onClose={handleCloseForm} editData={editTransaction} viewMode={!!viewTransaction} />

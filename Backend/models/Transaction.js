@@ -86,7 +86,15 @@ const transactionSchema = new mongoose.Schema({
   updatedAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  needsManualReview: {
+  type: Boolean,
+  default: false,
+},
+reviewNotes: {
+  type: String,
+  default: ''
+}
 });
 
 // Update the updatedAt field before saving
