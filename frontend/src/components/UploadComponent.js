@@ -59,7 +59,7 @@ const UploadComponent = ({ onUploadComplete }) => {
       
       console.log(`📤 Frontend: Uploading ${uploadType}:`, file.name);
       
-      const response = await axios.post(`http://localhost:5000${endpoint}`, formData, {
+      const response = await axios.post(`{process.env.REACT_APP_API_URL}${endpoint}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
