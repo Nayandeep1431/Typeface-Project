@@ -124,9 +124,7 @@ app.use('/api/', limiter);
 
 // CORS configuration allowing origins based on environment
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.com'] // Set to production frontend URL
-    : ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'], // Local dev URLs
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000',"https://typeface-project.onrender.com"], // Local dev URLs
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
