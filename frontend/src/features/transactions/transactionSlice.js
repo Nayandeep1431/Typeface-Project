@@ -127,7 +127,7 @@ export const createTransaction = createAsyncThunk(
 
       console.log('📤 Redux: Sending validated data:', validatedData);
       
-      const response = await fetch('${process.env.REACT_APP_API_URL}/api/transactions', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/transactions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -169,7 +169,7 @@ export const createBulkTransactions = createAsyncThunk(
         return rejectWithValue('Transactions array is required and must not be empty');
       }
 
-      const response = await fetch('${process.env.REACT_APP_API_URL}/api/transactions/bulk', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/transactions/bulk`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
