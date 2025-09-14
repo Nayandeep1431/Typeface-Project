@@ -11,12 +11,14 @@ import {
   Alert,
   CircularProgress,
   Divider,
+  useTheme,
 } from '@mui/material';
 import { AccountBalance as LogoIcon } from '@mui/icons-material';
 import { loginUser, registerUser, clearError } from '../features/auth/authSlice';
 
 const Login = () => {
   const dispatch = useDispatch();
+  const theme = useTheme();
   const { isLoading, error } = useSelector((state) => state.auth);
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({
@@ -110,12 +112,19 @@ const Login = () => {
             p: 4,
             borderRadius: 3,
             backdropFilter: 'blur(10px)',
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            backgroundColor: theme.palette.mode === 'light' 
+              ? 'rgba(255, 255, 255, 0.95)' 
+              : 'rgba(18, 18, 18, 0.95)',
+            color: theme.palette.text.primary,
           }}
         >
           <Box sx={{ textAlign: 'center', mb: 4 }}>
             <LogoIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
-            <Typography variant="h4" sx={{ fontWeight: 700, mb: 1 }}>
+            <Typography variant="h4" sx={{ 
+              fontWeight: 700, 
+              mb: 1,
+              color: theme.palette.text.primary 
+            }}>
               FinanceTracker
             </Typography>
             <Typography variant="body1" color="text.secondary">
@@ -144,6 +153,29 @@ const Login = () => {
                 error={!!validationErrors.username}
                 helperText={validationErrors.username}
                 inputProps={{ minLength: 3, maxLength: 30 }}
+                sx={{
+                  '& .MuiInputBase-input': {
+                    color: theme.palette.text.primary,
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: theme.palette.text.secondary,
+                  },
+                  '& .MuiOutlinedInput-root': {
+                    '& fieldset': {
+                      borderColor: theme.palette.mode === 'light' 
+                        ? 'rgba(0, 0, 0, 0.23)' 
+                        : 'rgba(255, 255, 255, 0.23)',
+                    },
+                    '&:hover fieldset': {
+                      borderColor: theme.palette.mode === 'light' 
+                        ? 'rgba(0, 0, 0, 0.87)' 
+                        : 'rgba(255, 255, 255, 0.87)',
+                    },
+                    '&.Mui-focused fieldset': {
+                      borderColor: theme.palette.primary.main,
+                    },
+                  },
+                }}
               />
             )}
             
@@ -159,6 +191,29 @@ const Login = () => {
               required
               error={!!validationErrors.email}
               helperText={validationErrors.email}
+              sx={{
+                '& .MuiInputBase-input': {
+                  color: theme.palette.text.primary,
+                },
+                '& .MuiInputLabel-root': {
+                  color: theme.palette.text.secondary,
+                },
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': {
+                    borderColor: theme.palette.mode === 'light' 
+                      ? 'rgba(0, 0, 0, 0.23)' 
+                      : 'rgba(255, 255, 255, 0.23)',
+                  },
+                  '&:hover fieldset': {
+                    borderColor: theme.palette.mode === 'light' 
+                      ? 'rgba(0, 0, 0, 0.87)' 
+                      : 'rgba(255, 255, 255, 0.87)',
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: theme.palette.primary.main,
+                  },
+                },
+              }}
             />
             
             <TextField
@@ -174,6 +229,29 @@ const Login = () => {
               error={!!validationErrors.password}
               helperText={validationErrors.password || 'Minimum 6 characters'}
               inputProps={{ minLength: 6 }}
+              sx={{
+                '& .MuiInputBase-input': {
+                  color: theme.palette.text.primary,
+                },
+                '& .MuiInputLabel-root': {
+                  color: theme.palette.text.secondary,
+                },
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': {
+                    borderColor: theme.palette.mode === 'light' 
+                      ? 'rgba(0, 0, 0, 0.23)' 
+                      : 'rgba(255, 255, 255, 0.23)',
+                  },
+                  '&:hover fieldset': {
+                    borderColor: theme.palette.mode === 'light' 
+                      ? 'rgba(0, 0, 0, 0.87)' 
+                      : 'rgba(255, 255, 255, 0.87)',
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: theme.palette.primary.main,
+                  },
+                },
+              }}
             />
 
             <Button
@@ -195,7 +273,7 @@ const Login = () => {
           <Divider sx={{ my: 3 }} />
 
           <Box sx={{ textAlign: 'center' }}>
-            <Typography variant="body2">
+            <Typography variant="body2" sx={{ color: theme.palette.text.primary }}>
               {isLogin ? "Don't have an account? " : 'Already have an account? '}
               <Link
                 component="button"
@@ -204,7 +282,10 @@ const Login = () => {
                   e.preventDefault();
                   toggleMode();
                 }}
-                sx={{ fontWeight: 600 }}
+                sx={{ 
+                  fontWeight: 600,
+                  color: theme.palette.primary.main,
+                }}
               >
                 {isLogin ? 'Sign up' : 'Sign in'}
               </Link>

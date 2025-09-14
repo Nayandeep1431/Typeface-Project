@@ -52,16 +52,76 @@ import { transactionAPI } from '../services/api';
 // ✅ FIXED: Move COLORS constant to top, before component definition
 const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#0088fe', '#00c49f', '#ffbb28'];
 
-// ✅ FIXED: Format currency helper moved outside component with safe fallback
+// ✅ CRITICAL FIX: Enhanced format currency helper
 const formatCurrency = (amount) => {
-  const safeAmount = typeof amount === 'number' ? amount : 0;
+  let safeAmount;
+  if (typeof amount === 'string') {
+    safeAmount = parseFloat(amount) || 0;
+  } else if (typeof amount === 'number') {
+    safeAmount = isNaN(amount) ? 0 : amount;
+  } else {
+    safeAmount = 0;
+  }
   return `₹${Math.abs(safeAmount).toLocaleString('en-IN')}`;
+};
+
+// ✅ CRITICAL FIX: Robust date parser for all transaction sources
+const parseTransactionDate = (dateInput) => {
+  if (!dateInput) return new Date();
+  
+  // Handle Date objects
+  if (dateInput instanceof Date) {
+    return isNaN(dateInput.getTime()) ? new Date() : dateInput;
+  }
+  
+  // Handle string dates
+  if (typeof dateInput === 'string') {
+    // First try direct parsing
+    let parsedDate = new Date(dateInput);
+    if (!isNaN(parsedDate.getTime())) {
+      return parsedDate;
+    }
+    
+    // Try various date formats
+    const formats = [
+      // ISO formats
+      /^(\d{4})-(\d{2})-(\d{2})/, // YYYY-MM-DD
+      /^(\d{4})\/(\d{2})\/(\d{2})/, // YYYY/MM/DD
+      // European formats
+      /^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})/, // DD-MM-YYYY or DD/MM/YYYY
+      /^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2})/, // DD-MM-YY or DD/MM/YY
+    ];
+    
+    for (const format of formats) {
+      const match = dateInput.match(format);
+      if (match) {
+        const [, part1, part2, part3] = match;
+        
+        if (format === formats[0] || format === formats[1]) {
+          // YYYY-MM-DD or YYYY/MM/DD
+          parsedDate = new Date(part1, part2 - 1, part3);
+        } else {
+          // DD-MM-YYYY formats - assuming European format
+          const year = part3.length === 2 ? `20${part3}` : part3;
+          parsedDate = new Date(year, part2 - 1, part1);
+        }
+        
+        if (!isNaN(parsedDate.getTime())) {
+          return parsedDate;
+        }
+      }
+    }
+  }
+  
+  // Fallback to current date
+  console.warn('⚠️ Could not parse date:', dateInput, 'using current date');
+  return new Date();
 };
 
 const Dashboard = () => {
   const dispatch = useDispatch();
   
-  // ✅ ALL HOOKS AT TOP LEVEL - BEFORE ANY CONDITIONAL LOGIC
+  // ✅ ALL HOOKS AT TOP LEVEL
   const { data: transactions = [], isLoading, error } = useSelector((state) => state.transactions);
   const { user } = useSelector((state) => state.auth);
   
@@ -80,11 +140,10 @@ const Dashboard = () => {
     avgDailySpending: 0
   });
 
-  // ✅ NEW: Add refresh trigger for automatic updates
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lastTransactionCount, setLastTransactionCount] = useState(0);
 
-  // ✅ ENHANCED: Initial fetch and periodic refresh
+  // ✅ Initial fetch
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -94,11 +153,10 @@ const Dashboard = () => {
         console.error('❌ Dashboard: Failed to fetch transactions:', error);
       }
     };
-
     fetchData();
   }, [dispatch, refreshTrigger]);
 
-  // ✅ NEW: Auto-refresh when transaction count changes (indicates new uploads)
+  // ✅ Auto-refresh detection
   useEffect(() => {
     if (transactions.length > lastTransactionCount && lastTransactionCount > 0) {
       const newTransactionsCount = transactions.length - lastTransactionCount;
@@ -112,7 +170,7 @@ const Dashboard = () => {
     setLastTransactionCount(transactions.length);
   }, [transactions.length, lastTransactionCount]);
 
-  // ✅ NEW: Listen for transaction updates via browser events (for inter-component communication)
+  // ✅ Listen for external updates
   useEffect(() => {
     const handleTransactionUpdate = (event) => {
       console.log('📥 Dashboard: Received transaction update event', event.detail);
@@ -128,55 +186,169 @@ const Dashboard = () => {
     };
 
     window.addEventListener('transactionUpdated', handleTransactionUpdate);
-    
-    return () => {
-      window.removeEventListener('transactionUpdated', handleTransactionUpdate);
-    };
+    return () => window.removeEventListener('transactionUpdated', handleTransactionUpdate);
   }, []);
 
-  // ✅ NEW: Automatic refresh every 30 seconds (in case uploads happen in other tabs)
+  // ✅ Auto refresh every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       console.log('🔄 Dashboard: Auto-refreshing transactions...');
       dispatch(fetchTransactions());
-    }, 30000); // 30 seconds
-
+    }, 30000);
     return () => clearInterval(interval);
   }, [dispatch]);
 
-  // ✅ Calculate filtered transactions with safe amount handling
+  // ✅ CRITICAL FIX: More lenient transaction filtering with spread operator
   const filteredTransactions = useMemo(() => {
+    console.log('🔍 Dashboard: Starting transaction filtering...', {
+      totalTransactions: transactions.length,
+      selectedCategory,
+      timeFilter
+    });
+
     if (!transactions || !Array.isArray(transactions)) {
+      console.warn('⚠️ Dashboard: No transactions or invalid format');
       return [];
     }
 
-    let filtered = transactions.map(t => ({
-      ...t,
-      amount: typeof t.amount === 'number' ? t.amount : 0 // ✅ SAFE FALLBACK
-    }));
+    // ✅ CRITICAL: Create a copy of transactions first to avoid read-only errors
+    let filtered = [...transactions].map((t, index) => {
+      // ✅ ROBUST DATE PARSING
+      const normalizedDate = parseTransactionDate(t.date);
+      
+      // ✅ ROBUST AMOUNT PARSING
+      let normalizedAmount = 0;
+      try {
+        if (typeof t.amount === 'number') {
+          normalizedAmount = isNaN(t.amount) ? 0 : t.amount;
+        } else if (typeof t.amount === 'string') {
+          normalizedAmount = parseFloat(t.amount.replace(/[^\d.-]/g, '')) || 0;
+        }
+      } catch (error) {
+        console.warn('⚠️ Amount parsing error:', error, 'for transaction:', t._id);
+        normalizedAmount = 0;
+      }
 
-    // Filter by category
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(t => t.category === selectedCategory);
-    }
+      const normalizedTransaction = {
+        ...t,
+        amount: normalizedAmount,
+        date: normalizedDate,
+        type: t.type || 'expense',
+        category: t.category || 'Other',
+        description: t.description || t.category || 'Unknown Transaction',
+        source: t.source || 'manual'
+      };
 
-    // Filter by time
-    const now = new Date();
-    const timeFilterDays = parseInt(timeFilter);
-    const filterDate = new Date(now.getTime() - timeFilterDays * 24 * 60 * 60 * 1000);
-    
-    filtered = filtered.filter(t => {
-      const transactionDate = new Date(t.date);
-      return transactionDate >= filterDate;
+      return normalizedTransaction;
     });
 
-    return filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+    console.log(`✅ Dashboard: Normalized ${filtered.length} transactions`);
+
+    // ✅ Category filtering
+    if (selectedCategory !== 'all') {
+      const beforeFilter = filtered.length;
+      filtered = filtered.filter(t => t.category === selectedCategory);
+      console.log(`🔍 Category filter (${selectedCategory}): ${beforeFilter} → ${filtered.length}`);
+    }
+
+    // ✅ EMERGENCY FIX: Very lenient time filtering (increased buffer)
+    const now = new Date();
+    const timeFilterDays = parseInt(timeFilter);
+    
+    // ✅ CRITICAL FIX: Add 2 days buffer and set to start of day
+    const filterDate = new Date();
+    filterDate.setDate(now.getDate() - timeFilterDays - 2); // Extra 2 days buffer
+    filterDate.setHours(0, 0, 0, 0);
+    
+    console.log(`🕒 Time filter setup (LENIENT):`, {
+      timeFilterDays: timeFilterDays,
+      actualDaysBack: timeFilterDays + 2,
+      filterDate: filterDate.toISOString().split('T')[0],
+      now: now.toISOString().split('T')[0]
+    });
+
+    const beforeTimeFilter = filtered.length;
+    filtered = filtered.filter((t, index) => {
+      const transactionDate = t.date;
+      const isInRange = transactionDate >= filterDate;
+      
+      // Debug ALL transactions that might be filtered out
+      if (!isInRange) {
+        console.log(`❌ FILTERED OUT:`, {
+          id: t._id?.substring(0, 8),
+          desc: t.description?.substring(0, 25),
+          date: transactionDate.toISOString().split('T')[0],
+          source: t.source,
+          daysDiff: Math.ceil((now - transactionDate) / (1000 * 60 * 60 * 24))
+        });
+      }
+      
+      return isInRange;
+    });
+
+    console.log(`✅ Time filter result: ${beforeTimeFilter} → ${filtered.length} (filtered out: ${beforeTimeFilter - filtered.length})`);
+
+    // ✅ CRITICAL FIX: Create copy before sorting
+    const finalFiltered = [...filtered].sort((a, b) => b.date - a.date);
+
+    // ✅ Final detailed summary
+    const summary = {
+      total: finalFiltered.length,
+      sources: {},
+      types: { income: 0, expense: 0 },
+      totalAmount: 0,
+      dateRange: {
+        oldest: finalFiltered.length > 0 ? finalFiltered[finalFiltered.length - 1].date.toISOString().split('T')[0] : 'N/A',
+        newest: finalFiltered.length > 0 ? finalFiltered[0].date.toISOString().split('T')[0] : 'N/A'
+      }
+    };
+
+    finalFiltered.forEach(t => {
+      summary.sources[t.source] = (summary.sources[t.source] || 0) + 1;
+      summary.types[t.type]++;
+      summary.totalAmount += t.amount;
+    });
+
+    console.log('✅ FINAL FILTERED TRANSACTIONS:', summary);
+
+    return finalFiltered;
   }, [transactions, selectedCategory, timeFilter]);
 
-  // ✅ Calculate statistics with safe amount handling
+  // ✅ EMERGENCY DEBUG: Log the filtering issue
+  useEffect(() => {
+    console.log('🔍 FILTERING DEBUG:', {
+      totalTransactions: transactions.length,
+      filteredTransactions: filteredTransactions.length,
+      missingCount: transactions.length - filteredTransactions.length,
+      timeFilter: timeFilter,
+      selectedCategory: selectedCategory,
+      
+      // Show details of filtered out transactions
+      filteredOutTransactions: transactions
+        .filter(t => !filteredTransactions.some(ft => ft._id === t._id))
+        .map(t => ({
+          id: t._id?.substring(0, 8),
+          amount: t.amount,
+          date: t.date,
+          source: t.source,
+          description: t.description?.substring(0, 30),
+          parsedDate: parseTransactionDate(t.date).toISOString().split('T')[0]
+        }))
+    });
+  }, [transactions, filteredTransactions, timeFilter, selectedCategory]);
+
+  // ✅ ENHANCED: Statistics calculation with all transactions for stats
   useEffect(() => {
     const calculateStats = () => {
-      if (!filteredTransactions.length) {
+      // ✅ EMERGENCY FIX: Use all transactions for statistics, not filtered ones
+      const allNormalizedTransactions = [...transactions].map(t => ({
+        ...t,
+        amount: typeof t.amount === 'number' ? t.amount : parseFloat(t.amount) || 0,
+        date: parseTransactionDate(t.date),
+        type: t.type || 'expense'
+      }));
+
+      if (!allNormalizedTransactions.length) {
         setStats({
           totalIncome: 0,
           totalExpenses: 0,
@@ -188,41 +360,44 @@ const Dashboard = () => {
         return;
       }
 
-      const totalIncome = filteredTransactions
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0);
+      const incomeTransactions = allNormalizedTransactions.filter(t => t.type === 'income');
+      const expenseTransactions = allNormalizedTransactions.filter(t => t.type === 'expense');
 
-      const totalExpenses = filteredTransactions
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0);
+      const totalIncome = incomeTransactions.reduce((sum, t) => sum + t.amount, 0);
+      const totalExpenses = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
 
-      const categories = new Set(filteredTransactions.map(t => t.category));
+      const categories = new Set(allNormalizedTransactions.map(t => t.category).filter(Boolean));
       const days = parseInt(timeFilter);
 
       const newStats = {
         totalIncome,
         totalExpenses,
         netBalance: totalIncome - totalExpenses,
-        transactionCount: filteredTransactions.length,
+        transactionCount: allNormalizedTransactions.length, // ✅ Show all transactions count
         categoriesCount: categories.size,
         avgDailySpending: totalExpenses / days
       };
 
       setStats(newStats);
-      
-      // ✅ Log stats for debugging
-      console.log('📊 Dashboard stats updated:', {
+
+      console.log('📊 Stats calculated (ALL TRANSACTIONS):', {
         transactions: newStats.transactionCount,
         income: formatCurrency(newStats.totalIncome),
         expenses: formatCurrency(newStats.totalExpenses),
-        balance: formatCurrency(newStats.netBalance)
+        balance: formatCurrency(newStats.netBalance),
+        incomeCount: incomeTransactions.length,
+        expenseCount: expenseTransactions.length,
+        sources: allNormalizedTransactions.reduce((acc, t) => {
+          acc[t.source || 'manual'] = (acc[t.source || 'manual'] || 0) + 1;
+          return acc;
+        }, {})
       });
     };
 
     calculateStats();
-  }, [filteredTransactions, timeFilter]);
+  }, [transactions, timeFilter]); // ✅ Use transactions, not filteredTransactions
 
-  // ✅ Get category data for pie chart with safe amount handling
+  // ✅ Category data for pie chart (use filtered for visualization)
   const categoryData = useMemo(() => {
     const categoryBreakdown = {};
     
@@ -230,8 +405,7 @@ const Dashboard = () => {
       .filter(t => t.type === 'expense')
       .forEach(t => {
         const category = t.category || 'Other';
-        const amount = typeof t.amount === 'number' ? t.amount : 0;
-        categoryBreakdown[category] = (categoryBreakdown[category] || 0) + amount;
+        categoryBreakdown[category] = (categoryBreakdown[category] || 0) + t.amount;
       });
 
     return Object.entries(categoryBreakdown)
@@ -241,28 +415,31 @@ const Dashboard = () => {
         color: COLORS[index % COLORS.length]
       }))
       .sort((a, b) => b.value - a.value)
-      .slice(0, 6); // Top 6 categories
+      .slice(0, 6);
   }, [filteredTransactions]);
 
-  // ✅ Get recent transactions chart data with safe amount handling
+  // ✅ Chart data for trends (use filtered for visualization)
   const chartData = useMemo(() => {
     const last7Days = [];
     const now = new Date();
     
     for (let i = 6; i >= 0; i--) {
-      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const date = new Date(now);
+      date.setDate(now.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
-      const dayTransactions = filteredTransactions.filter(t => 
-        t.date && t.date.split('T')[0] === dateStr
-      );
+      
+      const dayTransactions = filteredTransactions.filter(t => {
+        const tDateStr = t.date.toISOString().split('T')[0];
+        return tDateStr === dateStr;
+      });
       
       const income = dayTransactions
         .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0);
+        .reduce((sum, t) => sum + t.amount, 0);
       
       const expenses = dayTransactions
         .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : 0), 0);
+        .reduce((sum, t) => sum + t.amount, 0);
 
       last7Days.push({
         date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
@@ -281,7 +458,7 @@ const Dashboard = () => {
     setNotification({
       open: true,
       message: categoryName 
-        ? `Filtered transactions by category: ${categoryName}`
+        ? `Filtered by category: ${categoryName}`
         : 'Cleared category filter',
       severity: 'info'
     });
@@ -303,7 +480,6 @@ const Dashboard = () => {
     try {
       setDeleteLoading(true);
       await dispatch(deleteTransaction(selectedTransaction._id)).unwrap();
-      
       setNotification({
         open: true,
         message: 'Transaction deleted successfully',
@@ -325,12 +501,10 @@ const Dashboard = () => {
     setNotification(prev => ({ ...prev, open: false }));
   }, []);
 
-  // ✅ ENHANCED: Manual refresh with user feedback
   const loadExpenses = useCallback(async () => {
     try {
       console.log('🔄 Dashboard: Manual refresh triggered');
       await dispatch(fetchTransactions()).unwrap();
-      
       setNotification({
         open: true,
         message: `✅ Refreshed! Found ${transactions.length} transactions`,
@@ -345,7 +519,7 @@ const Dashboard = () => {
     }
   }, [dispatch, transactions.length]);
 
-  // ✅ CONDITIONAL RENDERING AFTER ALL HOOKS
+  // ✅ Error state
   if (error) {
     return (
       <Box sx={{ p: 3 }}>
@@ -374,9 +548,8 @@ const Dashboard = () => {
           <Typography variant="body1" color="text.secondary">
             Here's your financial overview for the selected period
           </Typography>
-          {/* ✅ NEW: Show last update time */}
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-            Last updated: {new Date().toLocaleTimeString()} • {transactions.length} total transactions
+            Last updated: {new Date().toLocaleTimeString()} • {transactions.length} total • {filteredTransactions.length} in period
           </Typography>
         </Box>
         
@@ -395,7 +568,6 @@ const Dashboard = () => {
             </Select>
           </FormControl>
           
-          {/* ✅ NEW: Manual refresh button */}
           <Button
             variant="outlined"
             onClick={loadExpenses}
@@ -409,22 +581,16 @@ const Dashboard = () => {
       </Box>
 
       {/* Loading State */}
-      {isLoading && (
-        <LinearProgress sx={{ mb: 3, borderRadius: 1 }} />
-      )}
+      {isLoading && <LinearProgress sx={{ mb: 3, borderRadius: 1 }} />}
 
-      {/* ✅ Statistics Cards - Centered with enhanced animations */}
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'center',
-        mb: 4
-      }}>
+      {/* Statistics Cards */}
+      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 4 }}>
         <Grid container spacing={3} sx={{ maxWidth: '1200px' }}>
           <Grid item xs={12} sm={6} md={3}>
             <motion.div 
               whileHover={{ scale: 1.02 }} 
               transition={{ duration: 0.2 }}
-              key={`balance-${stats.netBalance}`} // ✅ Key for re-animation on change
+              key={`balance-${stats.netBalance}`}
               initial={{ scale: 0.95, opacity: 0.7 }}
               animate={{ scale: 1, opacity: 1 }}
             >
@@ -481,7 +647,7 @@ const Dashboard = () => {
                     {formatCurrency(stats.totalIncome)}
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Last {timeFilter} days
+                    All time total
                   </Typography>
                 </CardContent>
               </Card>
@@ -515,7 +681,7 @@ const Dashboard = () => {
                     {formatCurrency(stats.totalExpenses)}
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Last {timeFilter} days
+                    All time total
                   </Typography>
                 </CardContent>
               </Card>
@@ -558,20 +724,19 @@ const Dashboard = () => {
         </Grid>
       </Box>
 
-      {/* Charts and Recent Transactions */}
+      {/* Charts */}
       <Box sx={{
         width: '75%',
         maxWidth: '1400px',
         mx: 'auto',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'space-evenly',
         gap: 4,
         mb: 4,
         px: 3
       }}>
         <Grid container spacing={4} sx={{ width: '100%' }}>
-          {/* ✅ Enhanced Weekly Trend Chart */}
+          {/* Weekly Trend Chart */}
           <Grid item xs={12} lg={8}>
             <Paper sx={{ 
               p: 4, 
@@ -675,7 +840,7 @@ const Dashboard = () => {
             </Paper>
           </Grid>
 
-          {/* ✅ Enhanced Category Breakdown */}
+          {/* Category Breakdown */}
           <Grid item xs={12} lg={4}>
             <Paper sx={{ 
               p: 4, 
@@ -768,9 +933,7 @@ const Dashboard = () => {
                     justifyContent: 'center',
                     mb: 3
                   }}>
-                    <Typography variant="h3" sx={{ color: 'grey.400' }}>
-                      📊
-                    </Typography>
+                    <Typography variant="h3" sx={{ color: 'grey.400' }}>📊</Typography>
                   </Box>
                   <Typography variant="h6" color="text.secondary" gutterBottom>
                     No Data Available
@@ -785,11 +948,11 @@ const Dashboard = () => {
         </Grid>
       </Box>
 
-      {/* Recent Transactions */}
+      {/* ✅ CRITICAL FIX: Recent Transactions - Show ALL transactions without filtering */}
       <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
         <Box sx={{ p: 3, bgcolor: 'primary.main', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Recent Transactions ({filteredTransactions.length})
+            Recent Transactions ({transactions.length} total)
           </Typography>
           <IconButton 
             onClick={loadExpenses} 
@@ -801,78 +964,118 @@ const Dashboard = () => {
         </Box>
         
         <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
-          {filteredTransactions.length === 0 ? (
+          {transactions.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 8 }}>
               <Receipt sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" gutterBottom>
                 No transactions found
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Try adjusting your filters or add some transactions
-              </Typography>
             </Box>
           ) : (
             <List>
-              {filteredTransactions.slice(0, 10).map((transaction, index) => (
-                <ListItem 
-                  key={transaction._id || index}
-                  sx={{ 
-                    borderBottom: '1px solid #f0f0f0',
-                    '&:hover': { bgcolor: 'grey.50' }
-                  }}
-                >
-                  <ListItemIcon>
-                    <Avatar sx={{ 
-                      bgcolor: transaction.type === 'income' ? 'success.main' : 'error.main',
-                      width: 40,
-                      height: 40
-                    }}>
-                      {transaction.type === 'income' ? <TrendingUp /> : <TrendingDown />}
-                    </Avatar>
-                  </ListItemIcon>
+              {/* ✅ CRITICAL FIX: Create a new array before sorting to avoid read-only error */}
+              {[...transactions] // ✅ Create copy to avoid read-only error
+                .sort((a, b) => {
+                  const dateA = parseTransactionDate(a.date);
+                  const dateB = parseTransactionDate(b.date);
+                  return dateB - dateA; // Newest first
+                })
+                .slice(0, 15) // Show latest 15 transactions
+                .map((transaction, index) => {
+                  // Safe date parsing
+                  let displayDate;
+                  try {
+                    displayDate = parseTransactionDate(transaction.date).toLocaleDateString();
+                  } catch {
+                    displayDate = 'Invalid Date';
+                  }
                   
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                          {transaction.description || transaction.category}
-                        </Typography>
-                        <Typography 
-                          variant="h6" 
-                          sx={{ 
-                            fontWeight: 700,
-                            color: transaction.type === 'income' ? 'success.main' : 'error.main'
-                          }}
-                        >
-                          {transaction.type === 'income' ? '+' : '-'}{formatCurrency(transaction.amount)}
-                        </Typography>
-                      </Box>
-                    }
-                    secondary={
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                          <Chip 
-                            label={transaction.category} 
-                            size="small" 
-                            variant="outlined"
-                            onClick={() => handleCategoryFilter(transaction.category)}
-                            sx={{ cursor: 'pointer' }}
-                          />
-                          <Typography variant="caption" color="text.secondary">
-                            {new Date(transaction.date).toLocaleDateString()}
-                          </Typography>
-                        </Box>
-                        <IconButton
-                          size="small"
-                          onClick={(e) => handleMenuClick(e, transaction)}
-                        >
-                          <MoreVert />
-                        </IconButton>
-                      </Box>
-                    }
-                  />
-                </ListItem>
-              ))}
+                  // Safe amount parsing
+                  let displayAmount = 0;
+                  try {
+                    displayAmount = typeof transaction.amount === 'number' 
+                      ? transaction.amount 
+                      : parseFloat(transaction.amount) || 0;
+                  } catch {
+                    displayAmount = 0;
+                  }
+
+                  return (
+                    <ListItem 
+                      key={transaction._id || index}
+                      sx={{ 
+                        borderBottom: '1px solid #f0f0f0',
+                        '&:hover': { bgcolor: 'grey.50' },
+                        backgroundColor: transaction.source === 'receipt_upload' ? '#f0fff0' : 
+                                         transaction.source === 'bank_statement' ? '#f0f0ff' : 'transparent'
+                      }}
+                    >
+                      <ListItemIcon>
+                        <Avatar sx={{ 
+                          bgcolor: transaction.type === 'income' ? 'success.main' : 'error.main',
+                          width: 40,
+                          height: 40
+                        }}>
+                          {transaction.type === 'income' ? <TrendingUp /> : <TrendingDown />}
+                        </Avatar>
+                      </ListItemIcon>
+                      
+                      <ListItemText
+                        primary={
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                              {transaction.description || transaction.category || 'Unknown Transaction'}
+                            </Typography>
+                            <Typography 
+                              variant="h6" 
+                              sx={{ 
+                                fontWeight: 700,
+                                color: transaction.type === 'income' ? 'success.main' : 'error.main'
+                              }}
+                            >
+                              {transaction.type === 'income' ? '+' : '-'}{formatCurrency(displayAmount)}
+                            </Typography>
+                          </Box>
+                        }
+                        secondary={
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                              <Chip 
+                                label={transaction.category || 'Other'} 
+                                size="small" 
+                                variant="outlined"
+                                sx={{ cursor: 'pointer' }}
+                              />
+                              <Typography variant="caption" color="text.secondary">
+                                {displayDate}
+                              </Typography>
+                              {/* ✅ SOURCE INDICATOR */}
+                              <Chip 
+                                label={transaction.source || 'manual'}
+                                size="small"
+                                variant="filled"
+                                sx={{ 
+                                  fontSize: '0.65rem',
+                                  height: '20px',
+                                  bgcolor: transaction.source === 'receipt_upload' ? '#4caf50' : 
+                                           transaction.source === 'bank_statement' ? '#2196f3' : '#757575',
+                                  color: 'white',
+                                  fontWeight: 'bold'
+                                }}
+                              />
+                            </Box>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => handleMenuClick(e, transaction)}
+                            >
+                              <MoreVert />
+                            </IconButton>
+                          </Box>
+                        }
+                      />
+                    </ListItem>
+                  );
+                })}
             </List>
           )}
         </Box>
@@ -900,7 +1103,7 @@ const Dashboard = () => {
         </MenuItem>
       </Menu>
 
-      {/* Notification Snackbar */}
+      {/* Notification */}
       <Snackbar
         open={notification.open}
         autoHideDuration={4000}
