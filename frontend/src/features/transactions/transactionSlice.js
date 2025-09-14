@@ -127,7 +127,7 @@ export const createTransaction = createAsyncThunk(
 
       console.log('📤 Redux: Sending validated data:', validatedData);
       
-      const response = await fetch('http://localhost:5000/api/transactions', {
+      const response = await fetch('${process.env.REACT_APP_API_URL}/api/transactions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -169,7 +169,7 @@ export const createBulkTransactions = createAsyncThunk(
         return rejectWithValue('Transactions array is required and must not be empty');
       }
 
-      const response = await fetch('http://localhost:5000/api/transactions/bulk', {
+      const response = await fetch('${process.env.REACT_APP_API_URL}/api/transactions/bulk', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -224,7 +224,7 @@ export const updateTransaction = createAsyncThunk(
 
       console.log('📤 Redux: Sending update data:', validatedData);
       
-      const response = await fetch(`http://localhost:5000/api/transactions/${id}`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/transactions/${id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -264,7 +264,7 @@ export const deleteTransaction = createAsyncThunk(
     try {
       console.log('🗑️ Redux: Deleting transaction:', id);
       
-      const response = await fetch(`http://localhost:5000/api/transactions/${id}`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/transactions/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -304,7 +304,7 @@ export const fetchTransactionStats = createAsyncThunk(
       if (params.endDate) queryParams.append('endDate', params.endDate);
       if (params.groupBy) queryParams.append('groupBy', params.groupBy);
 
-      const response = await fetch(`http://localhost:5000/api/transactions/stats?${queryParams}`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/transactions/stats?${queryParams}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
