@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useDispatch } from 'react-redux';
 import {
   Box,
@@ -27,6 +27,14 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Pagination,
+  Stack,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  useTheme,
+  alpha,
 } from '@mui/material';
 import {
   CloudUpload as UploadIcon,
@@ -53,6 +61,8 @@ import { FadeIn, SlideIn, AnimatedCard } from '../components/Animations/Animated
 
 const Upload = () => {
   const dispatch = useDispatch();
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
   
   // Upload state
   const [uploading, setUploading] = useState(false);
@@ -74,6 +84,10 @@ const Upload = () => {
   const [selectedUpload, setSelectedUpload] = useState(null);
   const [detailsDialog, setDetailsDialog] = useState(false);
 
+  // ✅ NEW: Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
   // Statistics
   const [stats, setStats] = useState({
     totalUploads: 0,
@@ -81,6 +95,16 @@ const Upload = () => {
     failedUploads: 0,
     totalProcessed: 0
   });
+
+  // ✅ NEW: Paginated uploads calculation
+  const paginatedUploads = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredUploads.slice(startIndex, endIndex);
+  }, [filteredUploads, currentPage, itemsPerPage]);
+
+  // ✅ NEW: Calculate total pages
+  const totalPages = Math.ceil(filteredUploads.length / itemsPerPage);
 
   // Load uploads on component mount
   useEffect(() => {
@@ -90,6 +114,7 @@ const Upload = () => {
   // Apply filters and sorting
   useEffect(() => {
     applyFiltersAndSort();
+    setCurrentPage(1); // Reset to first page when filters change
   }, [uploads, filter, sortBy, sortOrder]);
 
   const loadUploads = async () => {
@@ -173,6 +198,16 @@ const Upload = () => {
     });
 
     setFilteredUploads(filtered);
+  };
+
+  // ✅ NEW: Pagination handlers
+  const handlePageChange = (event, page) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (event) => {
+    setItemsPerPage(event.target.value);
+    setCurrentPage(1); // Reset to first page when changing items per page
   };
 
   // Enhanced file upload handler for receipts
@@ -563,14 +598,16 @@ const Upload = () => {
               <Card sx={{ 
                 borderRadius: 3, 
                 height: '100%',
-                background: uploading ? 'linear-gradient(135deg, #e3f2fd, #bbdefb)' : 'linear-gradient(135deg, #f8f9ff, #ffffff)',
+                background: uploading 
+                  ? `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.15)}, ${alpha(theme.palette.primary.main, 0.1)})` 
+                  : `linear-gradient(135deg, ${alpha(theme.palette.primary.light, 0.05)}, ${alpha(theme.palette.background.paper, 0.8)})`,
                 transition: 'all 0.3s ease',
-                border: '1px solid',
+                border: '2px solid',
                 borderColor: 'divider',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
+                boxShadow: theme.shadows[4],
                 '&:hover': {
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
-                  transform: 'translateY(-2px)',
+                  borderColor: 'primary.main',
+                  boxShadow: theme.shadows[8],
                 }
               }}>
                 <CardContent sx={{ p: 4, textAlign: 'center', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -590,7 +627,7 @@ const Upload = () => {
                     <Paper sx={{ 
                       p: 2, 
                       bgcolor: 'primary.main', 
-                      color: 'white',
+                      color: 'primary.contrastText',
                       borderRadius: 2,
                       mb: 2
                     }}>
@@ -623,7 +660,12 @@ const Upload = () => {
                         startIcon={<UploadIcon />}
                         size="large"
                         disabled={uploading}
-                        sx={{ px: 3, py: 1.5, fontWeight: 600 }}
+                        sx={{ 
+                          px: 3, 
+                          py: 1.5, 
+                          fontWeight: 600,
+                          borderRadius: 2,
+                        }}
                       >
                         {uploading ? 'Processing...' : 'Select Receipt Image'}
                       </Button>
@@ -643,14 +685,16 @@ const Upload = () => {
               <Card sx={{ 
                 borderRadius: 3, 
                 height: '100%',
-                background: uploading ? 'linear-gradient(135deg, #f3e5f5, #e1bee7)' : 'linear-gradient(135deg, #fff8e1, #ffffff)',
+                background: uploading 
+                  ? `linear-gradient(135deg, ${alpha(theme.palette.secondary.light, 0.15)}, ${alpha(theme.palette.secondary.main, 0.1)})` 
+                  : `linear-gradient(135deg, ${alpha(theme.palette.secondary.light, 0.05)}, ${alpha(theme.palette.background.paper, 0.8)})`,
                 transition: 'all 0.3s ease',
-                border: '1px solid',
+                border: '2px solid',
                 borderColor: 'divider',
-                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
+                boxShadow: theme.shadows[4],
                 '&:hover': {
-                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
-                  transform: 'translateY(-2px)',
+                  borderColor: 'secondary.main',
+                  boxShadow: theme.shadows[8],
                 }
               }}>
                 <CardContent sx={{ p: 4, textAlign: 'center', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -670,7 +714,7 @@ const Upload = () => {
                     <Paper sx={{ 
                       p: 2, 
                       bgcolor: 'secondary.main', 
-                      color: 'white',
+                      color: 'secondary.contrastText',
                       borderRadius: 2,
                       mb: 2
                     }}>
@@ -704,7 +748,12 @@ const Upload = () => {
                         size="large"
                         disabled={uploading}
                         color="secondary"
-                        sx={{ px: 3, py: 1.5, fontWeight: 600 }}
+                        sx={{ 
+                          px: 3, 
+                          py: 1.5, 
+                          fontWeight: 600,
+                          borderRadius: 2,
+                        }}
                       >
                         {uploading ? 'Processing...' : 'Select PDF Statement'}
                       </Button>
@@ -729,7 +778,14 @@ const Upload = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <Paper sx={{ p: 3, mb: 4, borderRadius: 3, background: 'linear-gradient(135deg, #e8f5e8, #c8e6c9)' }}>
+            <Paper sx={{ 
+              p: 3, 
+              mb: 4, 
+              borderRadius: 3, 
+              background: `linear-gradient(135deg, ${alpha(theme.palette.success.light, 0.1)}, ${alpha(theme.palette.success.main, 0.05)})`,
+              border: '2px solid',
+              borderColor: alpha(theme.palette.success.main, 0.3),
+            }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <motion.div
                   animate={{ rotate: 360 }}
@@ -773,11 +829,17 @@ const Upload = () => {
       {/* Debug Information Panel */}
       {debugInfo && (
         <SlideIn direction="up" delay={0.2}>
-          <Paper sx={{ mb: 4, borderRadius: 3, overflow: 'hidden' }}>
+          <Paper sx={{ 
+            mb: 4, 
+            borderRadius: 3, 
+            overflow: 'hidden',
+            border: '1px solid',
+            borderColor: 'divider',
+          }}>
             <Box sx={{ 
               p: 2, 
               bgcolor: 'info.main', 
-              color: 'white',
+              color: 'info.contrastText',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center'
@@ -792,7 +854,13 @@ const Upload = () => {
                 size="small"
                 variant="outlined"
                 onClick={() => setShowDebugInfo(!showDebugInfo)}
-                sx={{ color: 'white', borderColor: 'white' }}
+                sx={{ 
+                  color: 'info.contrastText', 
+                  borderColor: 'info.contrastText',
+                  '&:hover': {
+                    backgroundColor: alpha(theme.palette.info.contrastText, 0.1),
+                  }
+                }}
               >
                 {showDebugInfo ? 'Hide Details' : 'Show Details'}
               </Button>
@@ -824,11 +892,14 @@ const Upload = () => {
                     </Typography>
                     <Paper sx={{ 
                       p: 2, 
-                      bgcolor: 'grey.100', 
+                      bgcolor: alpha(theme.palette.text.secondary, 0.05),
                       maxHeight: 150, 
                       overflow: 'auto',
                       fontSize: '0.75rem',
-                      fontFamily: 'monospace'
+                      fontFamily: 'monospace',
+                      borderRadius: 1,
+                      border: '1px solid',
+                      borderColor: 'divider',
                     }}>
                       {debugInfo.ocrPreview || 'No preview available'}
                     </Paper>
@@ -851,6 +922,11 @@ const Upload = () => {
                         label="View Original File in Cloudinary"
                         clickable
                         color="primary"
+                        sx={{
+                          '&:hover': {
+                            backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                          }
+                        }}
                       />
                     </a>
                   </Box>
@@ -861,14 +937,21 @@ const Upload = () => {
         </SlideIn>
       )}
 
-      {/* Your Uploads Table */}
+      {/* ✅ ENHANCED: Your Uploads Table with Pagination */}
       <SlideIn direction="up" delay={0.3}>
-        <Paper sx={{ borderRadius: 3, overflow: 'hidden', mt: 4 }}>
+        <Paper sx={{ 
+          borderRadius: 3, 
+          overflow: 'hidden', 
+          mt: 4,
+          border: '1px solid',
+          borderColor: 'divider',
+          boxShadow: theme.shadows[2],
+        }}>
           {/* Header */}
           <Box sx={{ 
             p: 3, 
             bgcolor: 'primary.main', 
-            color: 'white',
+            color: 'primary.contrastText',
             display: 'flex', 
             justifyContent: 'space-between', 
             alignItems: 'center' 
@@ -886,11 +969,11 @@ const Upload = () => {
               disabled={tableLoading}
               variant="outlined"
               sx={{ 
-                color: 'white', 
-                borderColor: 'white',
+                color: 'primary.contrastText', 
+                borderColor: 'primary.contrastText',
                 '&:hover': {
-                  backgroundColor: 'rgba(255,255,255,0.1)',
-                  borderColor: 'white'
+                  backgroundColor: alpha(theme.palette.primary.contrastText, 0.1),
+                  borderColor: 'primary.contrastText'
                 }
               }}
               startIcon={<RefreshIcon />}
@@ -900,7 +983,12 @@ const Upload = () => {
           </Box>
 
           {/* Statistics */}
-          <Box sx={{ p: 3, bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}>
+          <Box sx={{ 
+            p: 3, 
+            bgcolor: alpha(theme.palette.text.secondary, 0.03), 
+            borderBottom: '1px solid', 
+            borderColor: 'divider' 
+          }}>
             <Grid container spacing={3}>
               <Grid item xs={12} sm={3}>
                 <Box sx={{ textAlign: 'center' }}>
@@ -945,330 +1033,611 @@ const Upload = () => {
             </Grid>
           </Box>
 
-          {/* Controls */}
-          <Box sx={{ p: 2, bgcolor: 'grey.100', display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Box>
-              <Typography variant="body2" sx={{ mr: 1, display: 'inline' }}>Filter:</Typography>
+          {/* ✅ ENHANCED: Controls with Items Per Page */}
+          <Box sx={{ 
+            p: 2, 
+            bgcolor: alpha(theme.palette.text.secondary, 0.02), 
+            display: 'flex', 
+            justifyContent: 'space-between',
+            alignItems: 'center', 
+            flexWrap: 'wrap',
+            gap: 2,
+            borderBottom: '1px solid',
+            borderColor: 'divider',
+          }}>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Typography variant="body2" sx={{ mr: 1, fontWeight: 600 }}>Filter:</Typography>
               <Chip
                 label="All"
                 size="small"
                 color={filter === 'all' ? 'primary' : 'default'}
                 onClick={() => setFilter('all')}
-                sx={{ mr: 1 }}
+                sx={{ 
+                  fontWeight: 600,
+                  '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.1) }
+                }}
               />
               <Chip
                 label="Success"
                 size="small"
                 color={filter === 'success' ? 'success' : 'default'}
                 onClick={() => setFilter('success')}
-                sx={{ mr: 1 }}
+                sx={{ 
+                  fontWeight: 600,
+                  '&:hover': { backgroundColor: alpha(theme.palette.success.main, 0.1) }
+                }}
               />
               <Chip
                 label="Error"
                 size="small"
                 color={filter === 'error' ? 'error' : 'default'}
                 onClick={() => setFilter('error')}
-                sx={{ mr: 1 }}
+                sx={{ 
+                  fontWeight: 600,
+                  '&:hover': { backgroundColor: alpha(theme.palette.error.main, 0.1) }
+                }}
               />
               <Chip
                 label="Receipts"
                 size="small"
                 color={filter === 'receipt' ? 'primary' : 'default'}
                 onClick={() => setFilter('receipt')}
-                sx={{ mr: 1 }}
+                sx={{ 
+                  fontWeight: 600,
+                  '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.1) }
+                }}
               />
               <Chip
                 label="Statements"
                 size="small"
                 color={filter === 'statement' ? 'secondary' : 'default'}
                 onClick={() => setFilter('statement')}
+                sx={{ 
+                  fontWeight: 600,
+                  '&:hover': { backgroundColor: alpha(theme.palette.secondary.main, 0.1) }
+                }}
               />
             </Box>
+
+            {/* ✅ NEW: Items per page selector */}
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Items per page</InputLabel>
+              <Select
+                value={itemsPerPage}
+                onChange={handleItemsPerPageChange}
+                label="Items per page"
+                sx={{ 
+                  '& .MuiSelect-select': { 
+                    py: 1,
+                    fontWeight: 600,
+                  }
+                }}
+              >
+                <MenuItem value={5}>5 per page</MenuItem>
+                <MenuItem value={10}>10 per page</MenuItem>
+                <MenuItem value={15}>15 per page</MenuItem>
+                <MenuItem value={20}>20 per page</MenuItem>
+              </Select>
+            </FormControl>
           </Box>
 
-          {/* Table */}
+          {/* ✅ ENHANCED: Table with Professional Styling */}
           {tableLoading ? (
-            <Box sx={{ p: 6, textAlign: 'center' }}>
+            <Box sx={{ p: 8, textAlign: 'center' }}>
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                 style={{ display: 'inline-block', marginBottom: 16 }}
               >
-                <RefreshIcon sx={{ fontSize: 40, color: 'primary.main' }} />
+                <RefreshIcon sx={{ fontSize: 48, color: 'primary.main' }} />
               </motion.div>
-              <Typography variant="h6">Loading uploads...</Typography>
-            </Box>
-          ) : filteredUploads.length === 0 ? (
-            <Box sx={{ p: 6, textAlign: 'center' }}>
-              <Typography variant="h1" sx={{ fontSize: 64, mb: 2 }}>📁</Typography>
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                {uploads.length === 0 ? 'No uploads found' : 'No matching uploads'}
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                Loading uploads...
               </Typography>
               <Typography variant="body2" color="text.secondary">
+                Please wait while we fetch your upload history
+              </Typography>
+            </Box>
+          ) : filteredUploads.length === 0 ? (
+            <Box sx={{ p: 8, textAlign: 'center' }}>
+              <Typography variant="h1" sx={{ fontSize: 72, mb: 3 }}>📁</Typography>
+              <Typography variant="h5" color="text.primary" sx={{ fontWeight: 600, mb: 2 }}>
+                {uploads.length === 0 ? 'No uploads found' : 'No matching uploads'}
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
                 {uploads.length === 0 
                   ? 'Upload your first receipt or bank statement to get started!'
                   : 'Try adjusting your filters to see more results.'
                 }
               </Typography>
+              {uploads.length === 0 && (
+                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <label htmlFor="receipt-upload">
+                    <Button 
+                      variant="contained" 
+                      color="primary"
+                      sx={{ fontWeight: 600 }}
+                    >
+                      📱 Upload Receipt
+                    </Button>
+                  </label>
+                  <label htmlFor="statement-upload">
+                    <Button 
+                      variant="contained" 
+                      color="secondary"
+                      sx={{ fontWeight: 600 }}
+                    >
+                      🏦 Upload PDF
+                    </Button>
+                  </label>
+                </Box>
+              )}
             </Box>
           ) : (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ fontWeight: 600 }}>File</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Size</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Extracted</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Upload Date</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Cloudinary URL</TableCell>
-                    <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredUploads.map((upload, index) => (
-                    <TableRow 
-                      key={upload.id}
-                      sx={{ 
-                        '&:hover': { bgcolor: 'action.hover' },
-                        backgroundColor: upload.status === 'error' ? 'rgba(244, 67, 54, 0.05)' : 'inherit'
-                      }}
-                    >
-                      {/* File Column */}
-                      <TableCell>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          {upload.type === 'receipt' ? (
-                            <ImageIcon color="primary" />
-                          ) : (
-                            <PdfIcon color="secondary" />
-                          )}
+            <>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ 
+                      '& .MuiTableCell-head': { 
+                        backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                        fontWeight: 700,
+                        fontSize: '0.9rem',
+                        py: 2,
+                        borderBottom: '2px solid',
+                        borderColor: 'primary.main',
+                      }
+                    }}>
+                      <TableCell>File</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Size</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Extracted</TableCell>
+                      <TableCell>Upload Date</TableCell>
+                      <TableCell>Cloudinary URL</TableCell>
+                      <TableCell align="center">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {/* ✅ NEW: Use paginatedUploads instead of filteredUploads */}
+                    {paginatedUploads.map((upload, index) => (
+                      <TableRow 
+                        key={upload.id}
+                        sx={{ 
+                          transition: 'all 0.3s ease',
+                          borderLeft: '4px solid transparent',
+                          '&:hover': { 
+                            borderLeftColor: upload.status === 'success' ? 'success.main' : 'error.main',
+                            backgroundColor: alpha(
+                              upload.status === 'success' ? theme.palette.success.main : theme.palette.error.main, 
+                              0.05
+                            ),
+                          },
+                          backgroundColor: upload.status === 'error' 
+                            ? alpha(theme.palette.error.main, 0.02) 
+                            : 'inherit',
+                          '& .MuiTableCell-root': {
+                            py: 2,
+                            borderBottom: '1px solid',
+                            borderColor: alpha(theme.palette.divider, 0.5),
+                          }
+                        }}
+                      >
+                        {/* File Column */}
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Avatar sx={{ 
+                              width: 40, 
+                              height: 40,
+                              bgcolor: upload.type === 'receipt' 
+                                ? alpha(theme.palette.primary.main, 0.1) 
+                                : alpha(theme.palette.secondary.main, 0.1),
+                            }}>
+                              {upload.type === 'receipt' ? (
+                                <ImageIcon sx={{ color: 'primary.main' }} />
+                              ) : (
+                                <PdfIcon sx={{ color: 'secondary.main' }} />
+                              )}
+                            </Avatar>
+                            <Box>
+                              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                                {upload.filename}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {upload.fileType}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </TableCell>
+
+                        {/* Type Column */}
+                        <TableCell>
+                          <Chip
+                            label={upload.type}
+                            size="small"
+                            color={upload.type === 'receipt' ? 'primary' : 'secondary'}
+                            variant="outlined"
+                            sx={{ 
+                              fontWeight: 600,
+                              textTransform: 'capitalize',
+                            }}
+                          />
+                        </TableCell>
+
+                        {/* Size Column */}
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {formatFileSize(upload.fileSize)}
+                          </Typography>
+                        </TableCell>
+
+                        {/* Status Column */}
+                        <TableCell>
+                          <Chip
+                            icon={upload.status === 'success' ? <SuccessIcon /> : <ErrorIcon />}
+                            label={upload.status}
+                            size="small"
+                            color={upload.status === 'success' ? 'success' : 'error'}
+                            sx={{ 
+                              fontWeight: 600,
+                              textTransform: 'capitalize',
+                            }}
+                          />
+                        </TableCell>
+
+                        {/* Extracted Column */}
+                        <TableCell>
                           <Box>
                             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {upload.filename}
+                              {upload.extractedCount || 0}
+                            </Typography>
+                            {upload.needsReview > 0 && (
+                              <Typography variant="caption" color="warning.main" sx={{ fontWeight: 600 }}>
+                                ({upload.needsReview} need review)
+                              </Typography>
+                            )}
+                          </Box>
+                        </TableCell>
+
+                        {/* Upload Date Column */}
+                        <TableCell>
+                          <Box>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {new Date(upload.timestamp).toLocaleDateString()}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
-                              {upload.fileType}
+                              {new Date(upload.timestamp).toLocaleTimeString()}
                             </Typography>
                           </Box>
-                        </Box>
-                      </TableCell>
+                        </TableCell>
 
-                      {/* Type Column */}
-                      <TableCell>
-                        <Chip
-                          label={upload.type}
-                          size="small"
-                          color={upload.type === 'receipt' ? 'primary' : 'secondary'}
-                          variant="outlined"
-                        />
-                      </TableCell>
-
-                      {/* Size Column */}
-                      <TableCell>
-                        <Typography variant="body2">
-                          {formatFileSize(upload.fileSize)}
-                        </Typography>
-                      </TableCell>
-
-                      {/* Status Column */}
-                      <TableCell>
-                        <Chip
-                          icon={upload.status === 'success' ? <SuccessIcon /> : <ErrorIcon />}
-                          label={upload.status}
-                          size="small"
-                          color={upload.status === 'success' ? 'success' : 'error'}
-                        />
-                      </TableCell>
-
-                      {/* Extracted Column */}
-                      <TableCell>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {upload.extractedCount || 0}
-                        </Typography>
-                        {upload.needsReview > 0 && (
-                          <Typography variant="caption" color="warning.main">
-                            ({upload.needsReview} need review)
-                          </Typography>
-                        )}
-                      </TableCell>
-
-                      {/* Upload Date Column */}
-                      <TableCell>
-                        <Typography variant="body2">
-                          {new Date(upload.timestamp).toLocaleDateString()}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {new Date(upload.timestamp).toLocaleTimeString()}
-                        </Typography>
-                      </TableCell>
-
-                      {/* Cloudinary URL Column */}
-                      <TableCell>
-                        {upload.cloudinaryUrl ? (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Tooltip title="Open in Cloudinary">
-                              <IconButton
-                                size="small"
-                                onClick={() => window.open(upload.cloudinaryUrl, '_blank')}
-                                sx={{ color: 'primary.main' }}
+                        {/* ✅ ENHANCED: Cloudinary URL Column */}
+                        <TableCell>
+                          {upload.cloudinaryUrl ? (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Tooltip title="Open in Cloudinary">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => window.open(upload.cloudinaryUrl, '_blank')}
+                                  sx={{ 
+                                    color: 'primary.main',
+                                    border: '1px solid',
+                                    borderColor: alpha(theme.palette.primary.main, 0.3),
+                                    '&:hover': {
+                                      backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                                      borderColor: 'primary.main',
+                                    }
+                                  }}
+                                >
+                                  <LinkIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Copy URL">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => copyToClipboard(upload.cloudinaryUrl)}
+                                  sx={{ 
+                                    color: 'success.main',
+                                    border: '1px solid',
+                                    borderColor: alpha(theme.palette.success.main, 0.3),
+                                    '&:hover': {
+                                      backgroundColor: alpha(theme.palette.success.main, 0.1),
+                                      borderColor: 'success.main',
+                                    }
+                                  }}
+                                >
+                                  <DownloadIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Typography 
+                                variant="caption" 
+                                color="text.secondary" 
+                                sx={{ 
+                                  maxWidth: 120, 
+                                  overflow: 'hidden', 
+                                  textOverflow: 'ellipsis',
+                                  fontFamily: 'monospace',
+                                  backgroundColor: alpha(theme.palette.text.secondary, 0.05),
+                                  px: 1,
+                                  py: 0.5,
+                                  borderRadius: 1,
+                                }}
                               >
-                                <LinkIcon />
-                              </IconButton>
-                            </Tooltip>
-                            <Tooltip title="Copy URL">
-                              <IconButton
-                                size="small"
-                                onClick={() => copyToClipboard(upload.cloudinaryUrl)}
-                                sx={{ color: 'success.main' }}
-                              >
-                                <DownloadIcon />
-                              </IconButton>
-                            </Tooltip>
-                            <Typography variant="caption" color="text.secondary" sx={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {upload.cloudinaryUrl.split('/').pop()}
+                                {upload.cloudinaryUrl.split('/').pop()}
+                              </Typography>
+                            </Box>
+                          ) : (
+                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                              No URL available
                             </Typography>
-                          </Box>
-                        ) : (
-                          <Typography variant="caption" color="text.secondary">
-                            No URL available
-                          </Typography>
-                        )}
-                      </TableCell>
+                          )}
+                        </TableCell>
 
-                      {/* Actions Column */}
-                      <TableCell>
-                        <Box sx={{ display: 'flex', gap: 0.5 }}>
-                          <Tooltip title="View Details">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleViewDetails(upload)}
-                              color="info"
-                            >
-                              <InfoIcon />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete Upload">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleDeleteUpload(upload.id)}
-                              disabled={deleteLoading === upload.id}
-                              color="error"
-                            >
-                              {deleteLoading === upload.id ? (
-                                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity }}>
-                                  <RefreshIcon />
-                                </motion.div>
-                              ) : (
-                                <DeleteIcon />
-                              )}
-                            </IconButton>
-                          </Tooltip>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                        {/* Actions Column */}
+                        <TableCell align="center">
+                          <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                            <Tooltip title="View Details">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleViewDetails(upload)}
+                                sx={{ 
+                                  color: 'info.main',
+                                  '&:hover': {
+                                    backgroundColor: alpha(theme.palette.info.main, 0.1),
+                                  }
+                                }}
+                              >
+                                <InfoIcon fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete Upload">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleDeleteUpload(upload.id)}
+                                disabled={deleteLoading === upload.id}
+                                sx={{ 
+                                  color: 'error.main',
+                                  '&:hover': {
+                                    backgroundColor: alpha(theme.palette.error.main, 0.1),
+                                  },
+                                  '&:disabled': {
+                                    color: 'text.disabled',
+                                  }
+                                }}
+                              >
+                                {deleteLoading === upload.id ? (
+                                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity }}>
+                                    <RefreshIcon fontSize="small" />
+                                  </motion.div>
+                                ) : (
+                                  <DeleteIcon fontSize="small" />
+                                )}
+                              </IconButton>
+                            </Tooltip>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {/* ✅ NEW: Pagination Controls */}
+              {totalPages > 1 && (
+                <Box sx={{ 
+                  p: 3, 
+                  borderTop: '1px solid', 
+                  borderColor: 'divider',
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  backgroundColor: alpha(theme.palette.text.secondary, 0.02),
+                }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+                    Showing {((currentPage - 1) * itemsPerPage) + 1} to{' '}
+                    {Math.min(currentPage * itemsPerPage, filteredUploads.length)} of{' '}
+                    {filteredUploads.length} uploads
+                  </Typography>
+                  
+                  <Stack direction="row" spacing={2} alignItems="center">
+                    <Pagination
+                      count={totalPages}
+                      page={currentPage}
+                      onChange={handlePageChange}
+                      color="primary"
+                      size="medium"
+                      showFirstButton
+                      showLastButton
+                      siblingCount={1}
+                      boundaryCount={1}
+                      sx={{
+                        '& .MuiPaginationItem-root': {
+                          fontWeight: 600,
+                          '&:hover': {
+                            backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                          },
+                        },
+                        '& .Mui-selected': {
+                          backgroundColor: `${theme.palette.primary.main} !important`,
+                          color: theme.palette.primary.contrastText,
+                        }
+                      }}
+                    />
+                  </Stack>
+                </Box>
+              )}
+            </>
           )}
         </Paper>
       </SlideIn>
 
-      {/* Upload Details Dialog */}
-      <Dialog open={detailsDialog} onClose={() => setDetailsDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      {/* ✅ ENHANCED: Upload Details Dialog */}
+      <Dialog 
+        open={detailsDialog} 
+        onClose={() => setDetailsDialog(false)} 
+        maxWidth="md" 
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            boxShadow: theme.shadows[8],
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1,
+          pb: 2,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+        }}>
           <InfoIcon color="primary" />
-          Upload Details
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            Upload Details
+          </Typography>
         </DialogTitle>
-        <DialogContent>
+        <DialogContent sx={{ pt: 3 }}>
           {selectedUpload && (
-            <Box sx={{ mt: 2 }}>
-              <Grid container spacing={2}>
+            <Box sx={{ mt: 1 }}>
+              <Grid container spacing={3}>
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                    📁 File Information
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb: 0.5 }}>
-                    <strong>Name:</strong> {selectedUpload.filename}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb: 0.5 }}>
-                    <strong>Type:</strong> {selectedUpload.type} ({selectedUpload.fileType})
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb: 0.5 }}>
-                    <strong>Size:</strong> {formatFileSize(selectedUpload.fileSize)}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb: 0.5 }}>
-                    <strong>Status:</strong> {selectedUpload.status}
-                  </Typography>
-                  <Typography variant="body2">
-                    <strong>Uploaded:</strong> {new Date(selectedUpload.timestamp).toLocaleString()}
-                  </Typography>
+                  <Paper sx={{ 
+                    p: 2, 
+                    bgcolor: alpha(theme.palette.primary.main, 0.05),
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: alpha(theme.palette.primary.main, 0.1),
+                  }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: 'primary.main' }}>
+                      📁 File Information
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      <strong>Name:</strong> {selectedUpload.filename}
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      <strong>Type:</strong> {selectedUpload.type} ({selectedUpload.fileType})
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      <strong>Size:</strong> {formatFileSize(selectedUpload.fileSize)}
+                    </Typography>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      <strong>Status:</strong> {selectedUpload.status}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>Uploaded:</strong> {new Date(selectedUpload.timestamp).toLocaleString()}
+                    </Typography>
+                  </Paper>
                 </Grid>
                 
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                    📊 Extraction Results
-                  </Typography>
-                  <Typography variant="body2" sx={{ mb: 0.5 }}>
-                    <strong>Items Extracted:</strong> {selectedUpload.extractedCount || 0}
-                  </Typography>
-                  {selectedUpload.needsReview > 0 && (
-                    <Typography variant="body2" sx={{ mb: 0.5, color: 'warning.main' }}>
-                      <strong>Needs Review:</strong> {selectedUpload.needsReview}
+                  <Paper sx={{ 
+                    p: 2, 
+                    bgcolor: alpha(theme.palette.success.main, 0.05),
+                    borderRadius: 2,
+                    border: '1px solid',
+                    borderColor: alpha(theme.palette.success.main, 0.1),
+                  }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: 'success.main' }}>
+                      📊 Extraction Results
                     </Typography>
-                  )}
-                  <Typography variant="body2">
-                    <strong>Message:</strong> {selectedUpload.message}
-                  </Typography>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      <strong>Items Extracted:</strong> {selectedUpload.extractedCount || 0}
+                    </Typography>
+                    {selectedUpload.needsReview > 0 && (
+                      <Typography variant="body2" sx={{ mb: 1, color: 'warning.main', fontWeight: 600 }}>
+                        <strong>Needs Review:</strong> {selectedUpload.needsReview}
+                      </Typography>
+                    )}
+                    <Typography variant="body2">
+                      <strong>Message:</strong> {selectedUpload.message}
+                    </Typography>
+                  </Paper>
                 </Grid>
 
                 {selectedUpload.cloudinaryUrl && (
                   <Grid item xs={12}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                      🔗 Cloudinary URL
-                    </Typography>
-                    <Paper sx={{ p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                        {selectedUpload.cloudinaryUrl}
+                    <Paper sx={{ 
+                      p: 3, 
+                      bgcolor: alpha(theme.palette.info.main, 0.05),
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: alpha(theme.palette.info.main, 0.1),
+                    }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: 'info.main' }}>
+                        🔗 Cloudinary URL
                       </Typography>
-                      <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => window.open(selectedUpload.cloudinaryUrl, '_blank')}
-                          startIcon={<ViewIcon />}
-                        >
-                          Open File
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          onClick={() => copyToClipboard(selectedUpload.cloudinaryUrl)}
-                          startIcon={<DownloadIcon />}
-                        >
-                          Copy URL
-                        </Button>
-                      </Box>
+                      <Paper sx={{ 
+                        p: 2, 
+                        bgcolor: alpha(theme.palette.text.secondary, 0.05), 
+                        borderRadius: 1,
+                        border: '1px solid',
+                        borderColor: alpha(theme.palette.text.secondary, 0.1),
+                      }}>
+                        <Typography variant="body2" sx={{ 
+                          fontFamily: 'monospace', 
+                          wordBreak: 'break-all',
+                          mb: 2,
+                          backgroundColor: alpha(theme.palette.text.secondary, 0.05),
+                          p: 1,
+                          borderRadius: 1,
+                        }}>
+                          {selectedUpload.cloudinaryUrl}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => window.open(selectedUpload.cloudinaryUrl, '_blank')}
+                            startIcon={<ViewIcon />}
+                            sx={{ fontWeight: 600 }}
+                          >
+                            Open File
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="success"
+                            onClick={() => copyToClipboard(selectedUpload.cloudinaryUrl)}
+                            startIcon={<DownloadIcon />}
+                            sx={{ fontWeight: 600 }}
+                          >
+                            Copy URL
+                          </Button>
+                        </Box>
+                      </Paper>
                     </Paper>
                   </Grid>
                 )}
 
                 {selectedUpload.processingStats && (
                   <Grid item xs={12}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
-                      ⚙️ Processing Statistics
-                    </Typography>
-                    <Paper sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                    <Paper sx={{ 
+                      p: 2, 
+                      bgcolor: alpha(theme.palette.warning.main, 0.05),
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: alpha(theme.palette.warning.main, 0.1),
+                    }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 2, color: 'warning.main' }}>
+                        ⚙️ Processing Statistics
+                      </Typography>
                       <Grid container spacing={2}>
                         {Object.entries(selectedUpload.processingStats).map(([key, value]) => (
-                          <Grid item xs={6} key={key}>
-                            <Typography variant="caption" color="text.secondary">
-                              {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
-                            </Typography>
-                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                              {value || 'N/A'}
-                            </Typography>
+                          <Grid item xs={6} sm={4} key={key}>
+                            <Box sx={{ 
+                              p: 1, 
+                              bgcolor: alpha(theme.palette.text.secondary, 0.03),
+                              borderRadius: 1,
+                              textAlign: 'center',
+                            }}>
+                              <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                              </Typography>
+                              <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.5 }}>
+                                {value || 'N/A'}
+                              </Typography>
+                            </Box>
                           </Grid>
                         ))}
                       </Grid>
@@ -1279,18 +1648,40 @@ const Upload = () => {
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDetailsDialog(false)}>Close</Button>
+        <DialogActions sx={{ p: 3, pt: 2 }}>
+          <Button 
+            onClick={() => setDetailsDialog(false)}
+            variant="contained"
+            sx={{ fontWeight: 600 }}
+          >
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
 
       {/* Recent Upload Results (for immediate feedback) */}
       {uploadResults.length > 0 && (
         <SlideIn direction="up" delay={0.4}>
-          <Paper sx={{ borderRadius: 3, overflow: 'hidden', mt: 4 }}>
-            <Box sx={{ p: 2, bgcolor: 'success.main', color: 'white' }}>
+          <Paper sx={{ 
+            borderRadius: 3, 
+            overflow: 'hidden', 
+            mt: 4,
+            border: '1px solid',
+            borderColor: 'divider',
+          }}>
+            <Box sx={{ 
+              p: 2, 
+              bgcolor: 'success.main', 
+              color: 'success.contrastText',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
               <Typography variant="h6" sx={{ fontWeight: 600 }}>
                 📂 Recent Upload Activity ({uploadResults.slice(0, 5).length})
+              </Typography>
+                            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                Latest uploads
               </Typography>
             </Box>
             
@@ -1300,33 +1691,42 @@ const Upload = () => {
                   key={result.id}
                   sx={{ 
                     p: 2, 
-                    borderBottom: '1px solid #f0f0f0',
-                    '&:last-child': { borderBottom: 'none' }
+                    borderBottom: '1px solid',
+                    borderColor: alpha(theme.palette.divider, 0.5),
+                    '&:last-child': { borderBottom: 'none' },
+                    transition: 'all 0.3s ease',
+                    '&:hover': {
+                      backgroundColor: alpha(theme.palette.text.secondary, 0.02),
+                      borderLeftColor: result.status === 'success' ? 'success.main' : 'error.main',
+                      borderLeft: '4px solid',
+                    }
                   }}
                 >
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
                         {result.filename}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary">
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
                         {result.message}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         {new Date(result.timestamp).toLocaleString()}
                       </Typography>
                     </Box>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexShrink: 0, ml: 2 }}>
                       <Chip 
                         label={result.type} 
                         size="small" 
                         color={result.type === 'receipt' ? 'primary' : 'secondary'}
+                        sx={{ fontWeight: 600 }}
                       />
                       <Chip 
                         icon={result.status === 'success' ? <SuccessIcon /> : <ErrorIcon />}
                         label={result.status} 
                         size="small" 
                         color={result.status === 'success' ? 'success' : 'error'}
+                        sx={{ fontWeight: 600 }}
                       />
                       {result.cloudinaryUrl && (
                         <a 
@@ -1342,6 +1742,12 @@ const Upload = () => {
                             clickable
                             variant="outlined"
                             color="primary"
+                            sx={{
+                              fontWeight: 600,
+                              '&:hover': {
+                                backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                              }
+                            }}
                           />
                         </a>
                       )}
@@ -1365,13 +1771,283 @@ const Upload = () => {
           onClose={() => setNotification({ ...notification, open: false })} 
           severity={notification.severity}
           variant="filled"
-          sx={{ minWidth: 300 }}
+          sx={{ 
+            minWidth: 300,
+            fontWeight: 600,
+            '& .MuiAlert-icon': {
+              fontSize: 20
+            }
+          }}
         >
           {notification.message}
         </Alert>
       </Snackbar>
+
+      {/* ✅ ENHANCED: Custom Styles for Animations */}
+      <style jsx>{`
+        @keyframes pulse {
+          0%, 100% { 
+            opacity: 1; 
+            transform: scale(1);
+          }
+          50% { 
+            opacity: 0.8; 
+            transform: scale(1.02);
+          }
+        }
+        
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .animate-pulse {
+          animation: pulse 2s infinite;
+        }
+
+        .animate-slideUp {
+          animation: slideUp 0.6s ease-out;
+        }
+
+        .animate-fadeIn {
+          animation: fadeIn 0.8s ease-out;
+        }
+
+        /* Professional scrollbar styling */
+        ::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+          background: ${isDarkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'};
+          border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+          background: ${isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'};
+          border-radius: 4px;
+          transition: background 0.3s ease;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+          background: ${isDarkMode ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'};
+        }
+
+        /* Enhanced focus states for accessibility */
+        .MuiButton-root:focus-visible,
+        .MuiIconButton-root:focus-visible,
+        .MuiChip-root:focus-visible {
+          outline: 2px solid ${theme.palette.primary.main};
+          outline-offset: 2px;
+        }
+
+        /* Smooth transitions for all interactive elements */
+        .MuiButton-root,
+        .MuiIconButton-root,
+        .MuiChip-root,
+        .MuiTableRow-root {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+
+        /* Enhanced loading animation */
+        .loading-shimmer {
+          background: linear-gradient(
+            90deg,
+            ${alpha(theme.palette.text.secondary, 0.1)} 25%,
+            ${alpha(theme.palette.text.secondary, 0.2)} 50%,
+            ${alpha(theme.palette.text.secondary, 0.1)} 75%
+          );
+          background-size: 200% 100%;
+          animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+
+        /* Professional hover effects */
+        .hover-lift {
+          transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .hover-lift:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 25px ${alpha(theme.palette.common.black, 0.15)};
+        }
+
+        /* Enhanced border animations */
+        .border-animate {
+          position: relative;
+          overflow: hidden;
+        }
+
+        .border-animate::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: -100%;
+          width: 100%;
+          height: 100%;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            ${alpha(theme.palette.primary.main, 0.3)},
+            transparent
+          );
+          transition: left 0.5s ease;
+        }
+
+        .border-animate:hover::before {
+          left: 100%;
+        }
+
+        /* Professional card shadows */
+        .card-elevated {
+          box-shadow: 
+            0 1px 3px ${alpha(theme.palette.common.black, 0.12)},
+            0 1px 2px ${alpha(theme.palette.common.black, 0.24)};
+        }
+
+        .card-elevated:hover {
+          box-shadow: 
+            0 14px 28px ${alpha(theme.palette.common.black, 0.25)},
+            0 10px 10px ${alpha(theme.palette.common.black, 0.22)};
+        }
+
+        /* Typography enhancements */
+        .typography-gradient {
+          background: linear-gradient(
+            135deg, 
+            ${theme.palette.primary.main}, 
+            ${theme.palette.secondary.main}
+          );
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        /* Enhanced status indicators */
+        .status-indicator {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 8px;
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .status-success {
+          background: ${alpha(theme.palette.success.main, 0.1)};
+          color: ${theme.palette.success.main};
+          border: 1px solid ${alpha(theme.palette.success.main, 0.3)};
+        }
+
+        .status-error {
+          background: ${alpha(theme.palette.error.main, 0.1)};
+          color: ${theme.palette.error.main};
+          border: 1px solid ${alpha(theme.palette.error.main, 0.3)};
+        }
+
+        .status-processing {
+          background: ${alpha(theme.palette.warning.main, 0.1)};
+          color: ${theme.palette.warning.main};
+          border: 1px solid ${alpha(theme.palette.warning.main, 0.3)};
+        }
+
+        /* Professional loading states */
+        .skeleton {
+          background: ${alpha(theme.palette.text.secondary, 0.11)};
+          border-radius: 4px;
+          animation: skeleton-loading 1.2s ease-in-out infinite;
+        }
+
+        @keyframes skeleton-loading {
+          0% { opacity: 1; }
+          50% { opacity: 0.4; }
+          100% { opacity: 1; }
+        }
+
+        /* Enhanced table styling */
+        .table-professional .MuiTableHead-root {
+          background: ${alpha(theme.palette.primary.main, 0.08)};
+        }
+
+        .table-professional .MuiTableRow-root:nth-child(even) {
+          background: ${alpha(theme.palette.text.secondary, 0.02)};
+        }
+
+        .table-professional .MuiTableRow-root:hover {
+          background: ${alpha(theme.palette.primary.main, 0.05)} !important;
+          transform: scale(1.001);
+        }
+
+        /* Enhanced form elements */
+        .form-elegant .MuiOutlinedInput-root {
+          border-radius: 8px;
+          transition: all 0.3s ease;
+        }
+
+        .form-elegant .MuiOutlinedInput-root:hover {
+          box-shadow: 0 2px 8px ${alpha(theme.palette.primary.main, 0.15)};
+        }
+
+        .form-elegant .MuiOutlinedInput-root.Mui-focused {
+          box-shadow: 0 4px 16px ${alpha(theme.palette.primary.main, 0.25)};
+          transform: translateY(-1px);
+        }
+
+        /* Accessibility improvements */
+        @media (prefers-reduced-motion: reduce) {
+          *,
+          *::before,
+          *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+          }
+        }
+
+        /* High contrast mode support */
+        @media (prefers-contrast: high) {
+          .MuiButton-root,
+          .MuiIconButton-root,
+          .MuiChip-root {
+            border: 2px solid currentColor !important;
+          }
+        }
+
+        /* Print styles */
+        @media print {
+          .no-print {
+            display: none !important;
+          }
+          
+          .print-friendly {
+            background: white !important;
+            color: black !important;
+            box-shadow: none !important;
+          }
+        }
+      `}</style>
     </Box>
   );
 };
 
 export default Upload;
+

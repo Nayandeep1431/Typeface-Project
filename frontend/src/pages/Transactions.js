@@ -56,10 +56,14 @@ import {
   ViewModule as CardIcon,
   Menu as MenuIcon,
   Warning as WarningIcon,
-  Schedule as ScheduleIcon,
   Save as SaveIcon,
   Close as CloseIcon,
+  FirstPage,
+  LastPage,
+  KeyboardArrowLeft,
+  KeyboardArrowRight,
 } from '@mui/icons-material';
+import ScheduleIcon from '@mui/icons-material/Schedule';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -84,6 +88,7 @@ import {
   AnimatedListItem,
 } from '../components/Animations/AnimatedComponents';
 
+
 const dateRangePresets = [
   { label: 'Today', getValue: () => ({ start: dayjs().startOf('day'), end: dayjs().endOf('day') }) },
   { label: 'This Week', getValue: () => ({ start: dayjs().startOf('week'), end: dayjs().endOf('week') }) },
@@ -92,6 +97,7 @@ const dateRangePresets = [
   { label: 'Last 3 Months', getValue: () => ({ start: dayjs().subtract(3, 'month').startOf('month'), end: dayjs().endOf('month') }) },
   { label: 'This Year', getValue: () => ({ start: dayjs().startOf('year'), end: dayjs().endOf('year') }) },
 ];
+
 
 const categories = [
   'Food & Dining',
@@ -111,6 +117,7 @@ const categories = [
   'Other',
 ];
 
+
 // ✅ Date validation helper
 const isFutureDate = (date) => {
   const today = dayjs().startOf('day');
@@ -118,9 +125,11 @@ const isFutureDate = (date) => {
   return compareDate.isAfter(today);
 };
 
+
 // ✅ Date Fix Dialog Component
 const DateFixDialog = ({ open, onClose, transaction, onSave, isLoading }) => {
   const [newDate, setNewDate] = useState(null);
+
 
   useEffect(() => {
     if (transaction && open) {
@@ -128,12 +137,14 @@ const DateFixDialog = ({ open, onClose, transaction, onSave, isLoading }) => {
     }
   }, [transaction, open]);
 
+
   const handleSave = async () => {
     if (newDate && transaction) {
       await onSave(transaction._id, newDate.toISOString());
       onClose();
     }
   };
+
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -183,6 +194,161 @@ const DateFixDialog = ({ open, onClose, transaction, onSave, isLoading }) => {
   );
 };
 
+
+// ✅ ENHANCED PROFESSIONAL PAGINATION COMPONENT
+const EnhancedPagination = ({ 
+  currentPage, 
+  totalPages, 
+  onPageChange, 
+  itemsPerPage = 10, 
+  totalItems = 0, 
+  showInfo = true 
+}) => {
+  if (totalPages <= 1) return null;
+
+  const startItem = (currentPage - 1) * itemsPerPage + 1;
+  const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+  return (
+    <Box 
+      sx={{ 
+        display: 'flex', 
+        flexDirection: { xs: 'column', sm: 'row' },
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        gap: 2,
+        mt: 4,
+        py: 3,
+        px: 2,
+        borderRadius: 3,
+        backgroundColor: 'background.paper',
+        boxShadow: (theme) => theme.palette.mode === 'dark' 
+          ? '0 4px 20px rgba(0,0,0,0.3)' 
+          : '0 4px 20px rgba(0,0,0,0.08)',
+        border: '1px solid',
+        borderColor: 'divider',
+      }}
+    >
+      {/* Pagination Info */}
+      {showInfo && (
+        <Typography 
+          variant="body2" 
+          color="text.secondary"
+          sx={{ 
+            fontWeight: 500,
+            order: { xs: 2, sm: 1 }
+          }}
+        >
+          Showing <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>{startItem}</Box>
+          {' '}-{' '}
+          <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>{endItem}</Box>
+          {' '}of{' '}
+          <Box component="span" sx={{ color: 'primary.main', fontWeight: 600 }}>{totalItems}</Box>
+          {' '}transactions
+        </Typography>
+      )}
+
+      {/* Enhanced Material-UI Pagination */}
+      <Pagination
+        count={totalPages}
+        page={currentPage}
+        onChange={(e, value) => onPageChange(value)}
+        color="primary"
+        size="large"
+        showFirstButton
+        showLastButton
+        siblingCount={1}
+        boundaryCount={1}
+        sx={{
+          order: { xs: 1, sm: 2 },
+          '& .MuiPaginationItem-root': {
+            fontSize: '0.95rem',
+            fontWeight: 500,
+            minWidth: 40,
+            height: 40,
+            margin: '0 2px',
+            borderRadius: 2,
+            border: '2px solid transparent',
+            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+            
+            // Light mode colors
+            color: 'text.primary',
+            backgroundColor: 'transparent',
+            
+            '&:hover': {
+              backgroundColor: 'transparent',
+              borderColor: 'primary.main',
+              transform: 'translateY(-1px)',
+              boxShadow: (theme) => theme.palette.mode === 'dark'
+                ? '0 4px 12px rgba(25, 118, 210, 0.25)'
+                : '0 4px 12px rgba(25, 118, 210, 0.15)',
+            },
+            
+            '&.Mui-selected': {
+              backgroundColor: 'primary.main',
+              color: 'primary.contrastText',
+              borderColor: 'primary.main',
+              fontWeight: 600,
+              boxShadow: (theme) => theme.palette.mode === 'dark'
+                ? '0 4px 16px rgba(25, 118, 210, 0.4)'
+                : '0 4px 16px rgba(25, 118, 210, 0.25)',
+              
+              '&:hover': {
+                backgroundColor: 'primary.dark',
+                borderColor: 'primary.dark',
+                transform: 'translateY(-1px)',
+              }
+            },
+            
+            '&.Mui-disabled': {
+              opacity: 0.4,
+              color: 'text.disabled',
+              backgroundColor: 'transparent',
+              borderColor: 'transparent',
+              
+              '&:hover': {
+                backgroundColor: 'transparent',
+                borderColor: 'transparent',
+                transform: 'none',
+                boxShadow: 'none',
+              }
+            }
+          },
+          
+          '& .MuiPaginationItem-ellipsis': {
+            color: 'text.secondary',
+            fontSize: '1.1rem',
+          },
+          
+          '& .MuiPaginationItem-icon': {
+            fontSize: '1.2rem',
+          },
+          
+          // Special styling for first/last/prev/next buttons
+          '& .MuiPaginationItem-previousNext': {
+            '&:hover': {
+              borderColor: 'secondary.main',
+              boxShadow: (theme) => theme.palette.mode === 'dark'
+                ? '0 4px 12px rgba(156, 39, 176, 0.25)'
+                : '0 4px 12px rgba(156, 39, 176, 0.15)',
+            }
+          },
+          
+          '& .MuiPaginationItem-firstLast': {
+            '&:hover': {
+              borderColor: 'secondary.main',
+              boxShadow: (theme) => theme.palette.mode === 'dark'
+                ? '0 4px 12px rgba(156, 39, 176, 0.25)'
+                : '0 4px 12px rgba(156, 39, 176, 0.15)',
+            }
+          }
+        }}
+      />
+    </Box>
+  );
+};
+
+
 const Transactions = () => {
   const dispatch = useDispatch();
   const {
@@ -192,6 +358,7 @@ const Transactions = () => {
     error,
     filters,
   } = useSelector((state) => state.transactions);
+
 
   const [openForm, setOpenForm] = useState(false);
   const [editTransaction, setEditTransaction] = useState(null);
@@ -206,18 +373,22 @@ const Transactions = () => {
   const [dateFixLoading, setDateFixLoading] = useState(false);
   const [showFutureDateAlert, setShowFutureDateAlert] = useState(true);
 
+
   // ✅ Calculate future date transactions
   const futureDateTransactions = transactions.filter(transaction => 
     isFutureDate(transaction.date)
   );
 
+
   useEffect(() => {
     applyFilters();
   }, [dispatch, filters]);
 
+
   useEffect(() => {
     setLocalFilters(filters);
   }, [filters]);
+
 
   const applyFilters = () => {
     const params = {
@@ -229,14 +400,17 @@ const Transactions = () => {
       ...(filters.endDate && { endDate: filters.endDate.toISOString() }),
     };
 
+
     dispatch(fetchTransactions(params));
   };
+
 
   const handleFilterChange = (field, value) => {
     const newFilters = { ...localFilters, [field]: value, page: 1 };
     setLocalFilters(newFilters);
     dispatch(setFilters(newFilters));
   };
+
 
   const handleDatePresetChange = (preset) => {
     if (preset) {
@@ -252,6 +426,7 @@ const Transactions = () => {
     }
   };
 
+
   const clearAllFilters = () => {
     setLocalFilters({
       search: '',
@@ -264,11 +439,13 @@ const Transactions = () => {
     dispatch(clearFilters());
   };
 
+
   const handleEditTransaction = (transaction) => {
     setEditTransaction(transaction);
     setOpenForm(true);
     handleCloseActionMenu();
   };
+
 
   const handleViewTransaction = (transaction) => {
     setViewTransaction(transaction);
@@ -276,10 +453,12 @@ const Transactions = () => {
     handleCloseActionMenu();
   };
 
+
   const handleDeleteClick = (transaction) => {
     setDeleteDialog({ open: true, transaction });
     handleCloseActionMenu();
   };
+
 
   const handleDeleteConfirm = async () => {
     try {
@@ -290,25 +469,30 @@ const Transactions = () => {
     }
   };
 
+
   const handleCloseForm = () => {
     setOpenForm(false);
     setEditTransaction(null);
     setViewTransaction(null);
   };
 
+
   const handleActionMenuClick = (event, transaction) => {
     setActionMenu({ anchorEl: event.currentTarget, transaction });
   };
 
+
   const handleCloseActionMenu = () => {
     setActionMenu({ anchorEl: null, transaction: null });
   };
+
 
   // ✅ Date fix handlers
   const handleDateFixClick = (transaction) => {
     setDateFixDialog({ open: true, transaction });
     handleCloseActionMenu();
   };
+
 
   const handleDateFixSave = async (transactionId, newDate) => {
     try {
@@ -329,13 +513,24 @@ const Transactions = () => {
     }
   };
 
+
+  // ✅ ENHANCED PAGE CHANGE HANDLER
+  const handlePageChange = (newPage) => {
+    // Smooth scroll to top when changing pages
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    handleFilterChange('page', newPage);
+  };
+
+
   const getTypeColor = (type) => {
     return type === 'income' ? 'success' : 'error';
   };
 
+
   const getTypeIcon = (type) => {
     return type === 'income' ? <TrendingUp /> : <TrendingDown />;
   };
+
 
   const summary = transactions.reduce(
     (acc, transaction) => {
@@ -350,7 +545,9 @@ const Transactions = () => {
     { totalIncome: 0, totalExpenses: 0 }
   );
 
+
   const netBalance = summary.totalIncome - summary.totalExpenses;
+
 
   // ✅ IMPROVED: Transaction Card Component with subtle highlighting
   const TransactionCard = ({ transaction, index }) => {
@@ -423,15 +620,18 @@ const Transactions = () => {
                 </IconButton>
               </Box>
 
+
               <Typography variant="subtitle1" sx={{ fontWeight: 500, mb: 1 }}>
                 {transaction.category}
               </Typography>
+
 
               {transaction.description && (
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                   {transaction.description}
                 </Typography>
               )}
+
 
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -465,6 +665,7 @@ const Transactions = () => {
                   </Box>
                 </Box>
 
+
                 {transaction.merchant && (
                   <Typography variant="caption" color="text.secondary">
                     {transaction.merchant}
@@ -478,6 +679,7 @@ const Transactions = () => {
     );
   };
 
+
   if (error) {
     return (
       <Box>
@@ -487,6 +689,7 @@ const Transactions = () => {
       </Box>
     );
   }
+
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -504,7 +707,6 @@ const Transactions = () => {
                     variant="outlined" 
                     color="warning"
                     onClick={() => {
-                      // Show the first future date transaction for fixing
                       if (futureDateTransactions[0]) {
                         handleDateFixClick(futureDateTransactions[0]);
                       }
@@ -531,6 +733,7 @@ const Transactions = () => {
           </Collapse>
         )}
 
+
         <FadeIn>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
             <Typography variant="h4" sx={{ fontWeight: 700 }}>
@@ -548,6 +751,7 @@ const Transactions = () => {
             </motion.div>
           </Box>
         </FadeIn>
+
 
         {/* Summary Cards */}
         <SlideIn direction="up" delay={0.1}>
@@ -604,7 +808,20 @@ const Transactions = () => {
           </Grid>
         </SlideIn>
 
+
         {/* Filters - Add your existing filter UI here */}
+
+
+        {/* Loading State */}
+        {isLoading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+            <CircularProgress size={48} />
+            <Typography variant="body1" sx={{ ml: 2 }} color="text.secondary">
+              Loading transactions...
+            </Typography>
+          </Box>
+        )}
+
 
         {/* Transactions Display */}
         {!isLoading && (
@@ -632,13 +849,11 @@ const Transactions = () => {
                             <TableRow 
                               hover 
                               sx={{ 
-                                // ✅ IMPROVED: Only border highlighting, no background change
                                 borderLeft: hasFutureDate ? '4px solid #f44336' : '4px solid transparent',
                                 '&:hover': { 
                                   backgroundColor: 'action.hover',
                                   '& .MuiTableCell-root': { borderBottomColor: 'divider' } 
                                 },
-                                // ✅ Subtle shadow for future dates
                                 ...(hasFutureDate && {
                                   boxShadow: 'inset 0 0 0 1px rgba(244, 67, 54, 0.2)',
                                 })
@@ -672,7 +887,6 @@ const Transactions = () => {
                                       >
                                         {dayjs(transaction.date).format('hh:mm A')}
                                       </Typography>
-                                      {/* ✅ IMPROVED: Subtle future indicator */}
                                       {hasFutureDate && (
                                         <Chip 
                                           label="Future" 
@@ -691,6 +905,7 @@ const Transactions = () => {
                                 </Box>
                               </TableCell>
 
+
                               <TableCell sx={{ minWidth: '235px', verticalAlign: 'top' }}>
                                 <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.4, mb: 0.5 }}>
                                   {transaction.description || 'No description'}
@@ -702,9 +917,11 @@ const Transactions = () => {
                                 )}
                               </TableCell>
 
+
                               <TableCell sx={{ minWidth: '220px', verticalAlign: 'top' }}>
                                 <Typography variant="body2" sx={{ lineHeight: 1.4 }}>{transaction.category}</Typography>
                               </TableCell>
+
 
                               <TableCell sx={{ minWidth: '215px', verticalAlign: 'top' }}>
                                 <Chip
@@ -719,6 +936,7 @@ const Transactions = () => {
                                   }}
                                 />
                               </TableCell>
+
 
                               <TableCell align="right" sx={{ minWidth: '120px', verticalAlign: 'top' }}>
                                 <Typography
@@ -735,9 +953,9 @@ const Transactions = () => {
                                 </Typography>
                               </TableCell>
 
+
                               <TableCell align="center" sx={{ minWidth: '80px', verticalAlign: 'top' }}>
                                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
-                                  {/* ✅ IMPROVED: More subtle warning button */}
                                   {hasFutureDate && (
                                     <Tooltip title="Fix future date">
                                       <IconButton 
@@ -782,6 +1000,7 @@ const Transactions = () => {
           </SlideIn>
         )}
 
+
         {/* Empty State */}
         {!isLoading && transactions.length === 0 && (
           <SlideIn direction="up" delay={0.3}>
@@ -804,17 +1023,31 @@ const Transactions = () => {
           </SlideIn>
         )}
 
-        {/* Pagination */}
+
+        {/* ✅ ENHANCED PROFESSIONAL PAGINATION */}
         {pagination && pagination.totalPages > 1 && (
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-            <Pagination count={pagination.totalPages} page={pagination.page} onChange={(e, val) => handleFilterChange('page', val)} color="primary" size="large" showFirstButton showLastButton />
-          </Box>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.2 }}
+          >
+            <EnhancedPagination
+              currentPage={pagination.page}
+              totalPages={pagination.totalPages}
+              onPageChange={handlePageChange}
+              itemsPerPage={pagination.limit || 10}
+              totalItems={pagination.total || 0}
+              showInfo={true}
+            />
+          </motion.div>
         )}
+
 
         {/* Floating Action Button for Mobile */}
         <Fab color="primary" aria-label="add transaction" sx={{ position: 'fixed', bottom: 24, right: 24, display: { xs: 'flex', md: 'none' } }} onClick={() => setOpenForm(true)}>
           <AddIcon />
         </Fab>
+
 
         {/* Action Menu */}
         <Menu anchorEl={actionMenu.anchorEl} open={Boolean(actionMenu.anchorEl)} onClose={handleCloseActionMenu} PaperProps={{ sx: { borderRadius: 2 } }}>
@@ -850,6 +1083,7 @@ const Transactions = () => {
           </MenuItem>
         </Menu>
 
+
         {/* ✅ Date Fix Dialog */}
         <DateFixDialog
           open={dateFixDialog.open}
@@ -859,8 +1093,10 @@ const Transactions = () => {
           isLoading={dateFixLoading}
         />
 
+
         {/* Transaction Form Dialog */}
         <TransactionForm open={openForm} onClose={handleCloseForm} editData={editTransaction} viewMode={!!viewTransaction} />
+
 
         {/* Delete Confirmation Dialog */}
         <DeleteConfirmDialog
@@ -877,5 +1113,6 @@ const Transactions = () => {
     </LocalizationProvider>
   );
 };
+
 
 export default Transactions;
