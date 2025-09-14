@@ -46,7 +46,7 @@ A modern, AI-powered finance tracking application built with React, Redux, and M
 
 ## 🎥 Demo
 
-🔗 *Live Demo*: [https://expense-tracker-demo.vercel.app](https://expense-tracker-demo.vercel.app)[Video](https://drive.google.com/file/d/1ghSz7YQMsPT2ghpAl6uZSi1fLfMGNx22/view?usp=sharing)
+🔗 *Live Demo*: [Video](https://drive.google.com/file/d/1ghSz7YQMsPT2ghpAl6uZSi1fLfMGNx22/view?usp=sharing)
 
 ---
 
