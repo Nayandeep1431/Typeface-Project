@@ -19,6 +19,7 @@ import { loginUser, registerUser, clearError } from '../features/auth/authSlice'
 const Login = () => {
   const dispatch = useDispatch();
   const theme = useTheme();
+  
   const { isLoading, error } = useSelector((state) => state.auth);
   const [isLogin, setIsLogin] = useState(true);
   const [formData, setFormData] = useState({

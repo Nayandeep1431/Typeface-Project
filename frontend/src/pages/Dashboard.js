@@ -120,7 +120,7 @@ const parseTransactionDate = (dateInput) => {
 
 const Dashboard = () => {
   const dispatch = useDispatch();
-
+  console.log(process.env.REACT_APP_API_URL);
   // ✅ ALL HOOKS AT TOP LEVEL
   const { data: transactions = [], isLoading, error } = useSelector((state) => state.transactions);
   const { user } = useSelector((state) => state.auth);
