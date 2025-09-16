@@ -126,9 +126,9 @@ cd ../frontend
 npm install
 npm start
 
-Frontend: http://localhost:3000
+Frontend: http://localhost:3000](https://typeface-project.onrender.com
 
-Backend: http://localhost:5000
+Backend: http://localhost:5000](https://finance-tracker-49qx.onrender.com
 
 
 
@@ -140,7 +140,7 @@ Backend (/backend/.env)
 
 PORT=5000
 NODE_ENV=development
-MONGODB_URI=mongodb://localhost:27017/finance-tracker
+MONGODB_URI=
 JWT_SECRET=your-secret
 JWT_EXPIRE=7d
 
@@ -157,10 +157,7 @@ FRONTEND_URL=http://localhost:3000
 
 Frontend (/frontend/.env.local)
 
-REACT_APP_API_BASE_URL=http://localhost:5000/api
-REACT_APP_ENABLE_ANALYTICS=true
-REACT_APP_ENABLE_AI_FEATURES=true
-
+REACT_APP_API_BASE_URL=https://finance-tracker-49qx.onrender.com/api
 
 ---
 
@@ -238,7 +235,7 @@ MIT License © 2024 Amit Kumar
 
 📧 Support & Contact
 
-GitHub: @Amitkr-2004
+GitHub: https://github.com/Nayandeep1431
 
 Email: your-email@example.com
 
