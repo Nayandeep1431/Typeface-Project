@@ -111,8 +111,8 @@ finance-tracker/ ├── frontend/       # React app ├── backend/       
 
 bash
 # 1. Clone the repository
-git clone https://github.com/Amitkr-2004/Finance.git
-cd Finance
+git clone (https://github.com/Nayandeep1431/Typeface-Project.git)
+cd Frontend
 
 # 2. Setup and run backend
 cd backend
